@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   CAROUSEL_SLOTS,
@@ -13,11 +14,16 @@ import {
 
 const MODULE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WORKSPACE = path.resolve(MODULE_ROOT, "..", "..");
-const CURRENT_ROOT = path.join(WORKSPACE, "current", "2026-08-22-31");
+const CURRENT_ROOT = process.env.SREDA_CURRENT_ROOT
+  ? path.resolve(process.env.SREDA_CURRENT_ROOT)
+  : path.join(WORKSPACE, "current", "2026-08-22-31");
 const STORIES_ROOT = path.join(CURRENT_ROOT, "stories");
 const CAROUSELS_ROOT = path.join(CURRENT_ROOT, "carousels");
+const ASSETS_AVAILABLE = existsSync(STORIES_ROOT) && existsSync(CAROUSELS_ROOT);
 
-test("All 45 Story slots resolve to one of exactly five ordered assets", async () => {
+test("All 45 Story slots resolve to one of exactly five ordered assets", {
+  skip: !ASSETS_AVAILABLE && "Encrypted assets are not decrypted in the public checkout",
+}, async () => {
   const seen = [];
   for (let day = 23; day <= 31; day += 1) {
     for (let index = 0; index < STORY_TIMES.length; index += 1) {
@@ -33,7 +39,9 @@ test("All 45 Story slots resolve to one of exactly five ordered assets", async (
   assert.equal(new Set(seen).size, 45);
 });
 
-test("All four carousel slots have 01–04 assets and embedded captions", async () => {
+test("All four carousel slots have 01–04 assets and embedded captions", {
+  skip: !ASSETS_AVAILABLE && "Encrypted assets are not decrypted in the public checkout",
+}, async () => {
   for (const [slot, config] of CAROUSEL_SLOTS) {
     const action = resolveScheduledAction(parseAt(slot.replace(" ", "T")));
     assert.equal(action.kind, "carousel");
