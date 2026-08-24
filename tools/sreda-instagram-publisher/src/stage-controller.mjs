@@ -60,6 +60,24 @@ async function checkLocal(state) {
   }
 }
 
+async function waitForPublic(state, timeoutMs = 45_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(new URL("healthz", `${state.publicBaseUrl}/`), {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (response.ok) return;
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+    await sleep(1_000);
+  }
+  throw new Error(`Публичный HTTPS staging не стал доступен: ${lastError?.message || "timeout"}`);
+}
+
 export async function getRunningStage(runtimeDir) {
   const state = await readState(runtimeDir);
   if (state?.status === "ready" && await checkLocal(state)) return state;
@@ -94,7 +112,10 @@ export async function startStage({ runtimeDir, cloudflaredPath }) {
       await sleep(300);
       const state = await readState(root);
       if (state?.launchId !== launchId) continue;
-      if (state.status === "ready" && await checkLocal(state)) return { ...state, reused: false };
+      if (state.status === "ready" && await checkLocal(state)) {
+        await waitForPublic(state);
+        return { ...state, reused: false };
+      }
       if (state.status === "error") throw new Error(state.error || "Не удалось запустить staging");
     }
     // Если daemon успел поднять loopback-сервер, но Quick Tunnel не подтвердился,
