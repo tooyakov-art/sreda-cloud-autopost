@@ -1,0 +1,107 @@
+name: SREDA Cloud Autopost
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+    - cron: "30 5 * * *"
+    - cron: "0 6 * * *"
+    - cron: "30 6 * * *"
+    - cron: "30 9 * * *"
+    - cron: "30 10 * * *"
+    - cron: "0 13 * * *"
+    - cron: "30 13 * * *"
+    - cron: "30 14 * * *"
+    - cron: "0 16 * * *"
+
+concurrency:
+  group: sreda-cloud-autopost
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        working-directory: tools/sreda-instagram-publisher
+        run: npm ci
+      - name: Install cloudflared
+        run: |
+          mkdir -p .bin
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o .bin/cloudflared
+          chmod +x .bin/cloudflared
+      - name: Verify Meta accounts and public staging
+        working-directory: tools/sreda-instagram-publisher
+        env:
+          SREDA_IG_ACCESS_TOKEN: ${{ secrets.SREDA_IG_ACCESS_TOKEN }}
+          SREDA_IG_USER_ID: ${{ secrets.SREDA_IG_USER_ID }}
+          SREDA_THREADS_ACCESS_TOKEN: ${{ secrets.SREDA_THREADS_ACCESS_TOKEN }}
+          SREDA_THREADS_USERNAME: ${{ secrets.SREDA_THREADS_USERNAME }}
+          SREDA_CLOUDFLARED: ${{ github.workspace }}/.bin/cloudflared
+        run: node src/cloud-verify.mjs
+
+  publish:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        working-directory: tools/sreda-instagram-publisher
+        run: npm ci
+      - name: Install cloudflared
+        run: |
+          mkdir -p .bin
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o .bin/cloudflared
+          chmod +x .bin/cloudflared
+      - name: Decrypt approved media
+        env:
+          SREDA_ASSETS_PASSWORD: ${{ secrets.SREDA_ASSETS_PASSWORD }}
+        run: |
+          mkdir -p current/2026-08-22-31 /tmp/sreda-content
+          for archive in content/*.enc; do
+            name="$(basename "$archive" .enc)"
+            openssl enc -d -aes-256-cbc -pbkdf2 -in "$archive" -out "/tmp/sreda-content/$name" -pass env:SREDA_ASSETS_PASSWORD
+            tar -xzf "/tmp/sreda-content/$name" -C current/2026-08-22-31
+          done
+      - name: Resolve local slot
+        id: slot
+        shell: bash
+        run: |
+          case "${{ github.event.schedule }}" in
+            "0 3 * * *") slot="08:00" ;;
+            "30 5 * * *") slot="10:30" ;;
+            "0 6 * * *") slot="11:00" ;;
+            "30 6 * * *") slot="11:30" ;;
+            "30 9 * * *") slot="14:30" ;;
+            "30 10 * * *") slot="15:30" ;;
+            "0 13 * * *") slot="18:00" ;;
+            "30 13 * * *") slot="18:30" ;;
+            "30 14 * * *") slot="19:30" ;;
+            "0 16 * * *") slot="21:00" ;;
+            *) exit 2 ;;
+          esac
+          echo "time=$slot" >> "$GITHUB_OUTPUT"
+      - name: Publish exact approved slot
+        working-directory: tools/sreda-instagram-publisher
+        env:
+          SREDA_IG_ACCESS_TOKEN: ${{ secrets.SREDA_IG_ACCESS_TOKEN }}
+          SREDA_IG_USER_ID: ${{ secrets.SREDA_IG_USER_ID }}
+          SREDA_THREADS_ACCESS_TOKEN: ${{ secrets.SREDA_THREADS_ACCESS_TOKEN }}
+          SREDA_THREADS_USERNAME: ${{ secrets.SREDA_THREADS_USERNAME }}
+          SREDA_CLOUDFLARED: ${{ github.workspace }}/.bin/cloudflared
+          SREDA_STORIES_ROOT: ${{ github.workspace }}/current/2026-08-22-31/stories
+          SREDA_CAROUSELS_ROOT: ${{ github.workspace }}/current/2026-08-22-31/carousels
+        run: node src/schedule-runner.mjs --scheduled-local-time "${{ steps.slot.outputs.time }}"

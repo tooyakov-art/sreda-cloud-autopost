@@ -1,0 +1,19 @@
+{
+  "name": "sreda-instagram-publisher",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Instagram and Threads API publisher for SREDA",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "dry-run": "node src/cli.mjs story --image-url https://example.invalid/story.jpg --idempotency-key example-story --dry-run",
+    "schedule:dry-run": "node src/schedule-runner.mjs --at 2026-08-23T08:00 --dry-run",
+    "direct:dry-run": "node src/cli.mjs direct-poll --config config/direct-replies.example.json --dry-run"
+  },
+  "dependencies": {
+    "sharp": "^0.35.3"
+  }
+}
