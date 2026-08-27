@@ -10,6 +10,7 @@ import {
   parseAt,
   resolveScheduledAction,
   storyFileForAction,
+  threadsAutopublishEnabled,
 } from "./schedule.mjs";
 import { clientFromEnv } from "./secrets.mjs";
 import { publicUrlForRoute, startStage, stopStage } from "./stage-controller.mjs";
@@ -106,6 +107,18 @@ async function run() {
     if (options.dryRun) {
       process.stdout.write(`${JSON.stringify({ ok: true, dryRun: true, noOp: true, reason: "outside-exact-slot" }, null, 2)}\n`);
     }
+    return;
+  }
+
+  if (action.kind === "threads-text" && !threadsAutopublishEnabled()) {
+    process.stdout.write(`${JSON.stringify({
+      ok: true,
+      dryRun: options.dryRun,
+      noOp: true,
+      kind: "threads-text",
+      localSlot: action.local.key,
+      reason: "threads-autopublish-disabled",
+    }, null, 2)}\n`);
     return;
   }
 

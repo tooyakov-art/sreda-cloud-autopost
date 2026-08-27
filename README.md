@@ -9,7 +9,7 @@ Production-автопубликатор `@sreda.astana` через официа�
 - `tools/sreda-instagram-publisher/` — проверяемый Node.js runner и тесты.
 - `.github/workflows/sreda-cloud-autopost.yml` — единственный production scheduler.
 - `content/*.enc` — только AES-256-зашифрованные утверждённые медиапакеты.
-- Тексты Threads и подписей — в исходниках runner.
+- Тексты Threads сохранены в исходниках runner, но их автопубликация отключена.
 
 Токенов, паролей, открытых клиентских изображений, WhatsApp и личных данных в репозитории нет.
 
@@ -24,15 +24,14 @@ Production-автопубликатор `@sreda.astana` через официа�
 | Локально | Канал |
 |---:|---|
 | 08:00 | Stories |
-| 10:30 | Threads, если запланирован |
 | 11:00 | Instagram-карусель, если запланирована |
 | 11:30 | Stories |
 | 14:30 | Stories |
-| 15:30 | Threads, если запланирован |
 | 18:00 | Instagram-карусель, если запланирована |
 | 18:30 | Stories |
-| 19:30 | Threads, если запланирован |
 | 21:00 | Stories |
+
+Автопубликация Threads отключена 27 августа 2026 года. Даже при ручном вызове runner не публикует Threads без отдельного значения `SREDA_THREADS_AUTOPUBLISH_ENABLED=true`.
 
 ## Документация
 

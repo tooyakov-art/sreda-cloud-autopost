@@ -5,6 +5,10 @@ import { CAROUSEL_CAPTIONS } from "./carousel-captions.mjs";
 export const TIME_ZONE = "Asia/Qyzylorda";
 export const STORY_TIMES = ["08:00", "11:30", "14:30", "18:30", "21:00"];
 
+export function threadsAutopublishEnabled(env = process.env) {
+  return env.SREDA_THREADS_AUTOPUBLISH_ENABLED === "true";
+}
+
 const THREADS_POSTS = [
   ["TH-05", "2026-08-28 15:30", "RU", "Иногда лучший план на день выглядит так: зайти на кофе без повода, сесть у окна и уже потом решать всё остальное. У вас тоже так бывает?"],
   ["TH-06", "2026-08-29 15:30", "KZ", "Матча Клубника с пенкой деген атаудың өзі көңіл күй сыйлайды 🍓 Бір рет байқап көрдіңіз бе, әлде әлі тізімде тұр ма?"],

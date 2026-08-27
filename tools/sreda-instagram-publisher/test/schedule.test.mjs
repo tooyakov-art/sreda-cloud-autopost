@@ -8,7 +8,14 @@ import {
   localSlot,
   parseAt,
   resolveScheduledAction,
+  threadsAutopublishEnabled,
 } from "../src/schedule.mjs";
+
+test("Threads autopublishing is disabled unless explicitly enabled", () => {
+  assert.equal(threadsAutopublishEnabled({}), false);
+  assert.equal(threadsAutopublishEnabled({ SREDA_THREADS_AUTOPUBLISH_ENABLED: "false" }), false);
+  assert.equal(threadsAutopublishEnabled({ SREDA_THREADS_AUTOPUBLISH_ENABLED: "true" }), true);
+});
 
 test("Qyzylorda exact Story slots map to correct daily index", () => {
   const morning = resolveScheduledAction(parseAt("2026-08-23T08:00"));
