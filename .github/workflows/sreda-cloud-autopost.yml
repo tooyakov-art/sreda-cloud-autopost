@@ -124,7 +124,15 @@ jobs:
             echo "Refusing a stale Story slot: $((-wait_seconds))s late" >&2
             exit 3
           fi
+          local_date="$(TZ=Asia/Qyzylorda date +%F)"
           echo "time=$slot" >> "$GITHUB_OUTPUT"
+          echo "ledger_key=sreda-story-${local_date}-${slot//:/}" >> "$GITHUB_OUTPUT"
+      - name: Restore durable publication ledger
+        id: story_ledger
+        uses: actions/cache/restore@v4
+        with:
+          path: tools/sreda-instagram-publisher/.runtime/publication-ledger.json
+          key: ${{ steps.slot.outputs.ledger_key }}
       - name: Publish exact approved slot
         working-directory: tools/sreda-instagram-publisher
         env:
@@ -134,3 +142,12 @@ jobs:
           SREDA_CLOUDFLARED: ${{ github.workspace }}/.bin/cloudflared
           SREDA_STORIES_ROOT: ${{ github.workspace }}/current/stories-bank
         run: node src/schedule-runner.mjs --scheduled-local-time "${{ steps.slot.outputs.time }}"
+      - name: Save durable publication ledger
+        if: >-
+          always() &&
+          steps.story_ledger.outputs.cache-hit != 'true' &&
+          hashFiles('tools/sreda-instagram-publisher/.runtime/publication-ledger.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: tools/sreda-instagram-publisher/.runtime/publication-ledger.json
+          key: ${{ steps.slot.outputs.ledger_key }}
