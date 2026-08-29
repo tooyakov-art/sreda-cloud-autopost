@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Local Instagram and Threads API publisher for SREDA",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "scripts": {
     "test": "node --test test/*.test.mjs",
