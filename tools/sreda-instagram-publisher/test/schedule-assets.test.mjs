@@ -3,9 +3,10 @@ import test from "node:test";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import sharp from "sharp";
 import {
   CAROUSEL_SLOTS,
-  STORY_TIMES,
+  STORY_SLOTS,
   carouselFilesForAction,
   parseAt,
   resolveScheduledAction,
@@ -17,30 +18,33 @@ const WORKSPACE = path.resolve(MODULE_ROOT, "..", "..");
 const CURRENT_ROOT = process.env.SREDA_CURRENT_ROOT
   ? path.resolve(process.env.SREDA_CURRENT_ROOT)
   : path.join(WORKSPACE, "current", "2026-08-22-31");
-const STORIES_ROOT = path.join(CURRENT_ROOT, "stories");
+const STORIES_ROOT = process.env.SREDA_STORIES_ROOT
+  ? path.resolve(process.env.SREDA_STORIES_ROOT)
+  : path.join(CURRENT_ROOT, "stories");
 const CAROUSELS_ROOT = path.join(CURRENT_ROOT, "carousels");
-const ASSETS_AVAILABLE = existsSync(STORIES_ROOT) && existsSync(CAROUSELS_ROOT);
+const STORIES_AVAILABLE = existsSync(STORIES_ROOT);
+const CAROUSELS_AVAILABLE = existsSync(CAROUSELS_ROOT);
 
-test("All 45 Story slots resolve to one of exactly five ordered assets", {
-  skip: !ASSETS_AVAILABLE && "Encrypted assets are not decrypted in the public checkout",
+test("All 165 Story slots resolve to curated 1080x1920 assets", {
+  skip: !STORIES_AVAILABLE && "Encrypted assets are not decrypted in the public checkout",
 }, async () => {
   const seen = [];
-  for (let day = 23; day <= 31; day += 1) {
-    for (let index = 0; index < STORY_TIMES.length; index += 1) {
-      const date = `2026-08-${String(day).padStart(2, "0")}T${STORY_TIMES[index]}`;
-      const action = resolveScheduledAction(parseAt(date));
-      assert.equal(action.kind, "story");
-      const file = await storyFileForAction(action, STORIES_ROOT);
-      assert.match(path.basename(file), new RegExp(`^0${index + 1}-`));
-      seen.push(file);
-    }
+  for (const slot of STORY_SLOTS.keys()) {
+    const action = resolveScheduledAction(parseAt(slot.replace(" ", "T")));
+    assert.equal(action.kind, "story");
+    const file = await storyFileForAction(action, STORIES_ROOT);
+    assert.doesNotMatch(file, /DRAFT/i);
+    const metadata = await sharp(file).metadata();
+    assert.equal(metadata.width, 1080, file);
+    assert.equal(metadata.height, 1920, file);
+    seen.push(file);
   }
-  assert.equal(seen.length, 45);
-  assert.equal(new Set(seen).size, 45);
+  assert.equal(seen.length, 165);
+  assert.ok(new Set(seen).size >= 40);
 });
 
 test("All four carousel slots have 01–04 assets and embedded captions", {
-  skip: !ASSETS_AVAILABLE && "Encrypted assets are not decrypted in the public checkout",
+  skip: !CAROUSELS_AVAILABLE && "Encrypted assets are not decrypted in the public checkout",
 }, async () => {
   for (const [slot, config] of CAROUSEL_SLOTS) {
     const action = resolveScheduledAction(parseAt(slot.replace(" ", "T")));

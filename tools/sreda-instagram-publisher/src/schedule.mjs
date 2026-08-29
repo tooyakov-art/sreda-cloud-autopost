@@ -1,9 +1,10 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { CAROUSEL_CAPTIONS } from "./carousel-captions.mjs";
+import { STORY_SLOTS, STORY_TIMES } from "./story-calendar.mjs";
 
 export const TIME_ZONE = "Asia/Qyzylorda";
-export const STORY_TIMES = ["08:00", "11:30", "14:30", "18:30", "21:00"];
+export { STORY_SLOTS, STORY_TIMES } from "./story-calendar.mjs";
 
 export function threadsAutopublishEnabled(env = process.env) {
   return env.SREDA_THREADS_AUTOPUBLISH_ENABLED === "true";
@@ -119,12 +120,8 @@ export function resolveScheduledAction(date) {
   const threads = THREADS_SLOTS.get(local.key);
   if (threads) return { kind: "threads-text", local, ...threads };
 
-  const day = Number(local.date.slice(-2));
-  const isAugustWindow = local.date.startsWith("2026-08-") && day >= 23 && day <= 31;
-  const storyIndex = STORY_TIMES.indexOf(local.time);
-  if (isAugustWindow && storyIndex >= 0) {
-    return { kind: "story", local, storyIndex };
-  }
+  const story = STORY_SLOTS.get(local.key);
+  if (story) return { kind: "story", local, ...story };
   return null;
 }
 
@@ -139,14 +136,19 @@ async function filesInFolder(folder, extensions) {
 
 export async function storyFileForAction(action, storiesRoot) {
   if (action.kind !== "story") throw new Error("Ожидался Story-слот");
-  const folder = path.join(storiesRoot, action.local.date);
-  const info = await stat(folder);
-  if (!info.isDirectory()) throw new Error(`Нет папки Stories: ${folder}`);
-  const files = await filesInFolder(folder, new Set([".png", ".jpg", ".jpeg"]));
-  if (files.length !== 5) {
-    throw new Error(`В ${folder} должно быть ровно 5 Stories, найдено ${files.length}`);
+  if (!action.asset || path.isAbsolute(action.asset)) throw new Error("У Story-слота нет безопасного asset-пути");
+  const root = path.resolve(storiesRoot);
+  const file = path.resolve(root, action.asset);
+  const relative = path.relative(root, file);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`Story asset выходит за пределы каталога: ${action.asset}`);
   }
-  return files[action.storyIndex];
+  if (!new Set([".png", ".jpg", ".jpeg"]).has(path.extname(file).toLowerCase())) {
+    throw new Error(`Неподдерживаемый формат Story: ${file}`);
+  }
+  const info = await stat(file);
+  if (!info.isFile()) throw new Error(`Story asset не является файлом: ${file}`);
+  return file;
 }
 
 export async function carouselFilesForAction(action, carouselsRoot) {

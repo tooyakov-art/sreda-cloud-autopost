@@ -3,13 +3,12 @@ name: SREDA Cloud Autopost
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 3 * * *"
-    - cron: "0 6 * * *"
-    - cron: "30 6 * * *"
-    - cron: "30 9 * * *"
-    - cron: "0 13 * * *"
-    - cron: "30 13 * * *"
-    - cron: "0 16 * * *"
+    # Start off-peak and prewarm 17 minutes before each Qyzylorda slot.
+    - cron: "43 2 * * *"
+    - cron: "13 6 * * *"
+    - cron: "13 9 * * *"
+    - cron: "13 13 * * *"
+    - cron: "43 15 * * *"
 
 concurrency:
   group: sreda-cloud-autopost
@@ -47,9 +46,9 @@ jobs:
         run: node src/cloud-verify.mjs
 
   publish:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' && github.run_attempt == 1
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -65,38 +64,43 @@ jobs:
           chmod +x .bin/cloudflared
       - name: Decrypt approved media
         env:
-          SREDA_ASSETS_PASSWORD: ${{ secrets.SREDA_ASSETS_PASSWORD }}
+          SREDA_STORIES_ASSETS_PASSWORD: ${{ secrets.SREDA_STORIES_ASSETS_PASSWORD }}
         run: |
-          mkdir -p current/2026-08-22-31 /tmp/sreda-content
-          for archive in content/*.enc; do
-            name="$(basename "$archive" .enc)"
-            openssl enc -d -aes-256-cbc -pbkdf2 -in "$archive" -out "/tmp/sreda-content/$name" -pass env:SREDA_ASSETS_PASSWORD
-            tar -xzf "/tmp/sreda-content/$name" -C current/2026-08-22-31
-          done
-      - name: Resolve local slot
+          mkdir -p current/stories-bank /tmp/sreda-content
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in content/stories-2026-08-29-to-2026-09-30.tar.gz.enc \
+            -out /tmp/sreda-content/stories.tar.gz \
+            -pass env:SREDA_STORIES_ASSETS_PASSWORD
+          tar -xzf /tmp/sreda-content/stories.tar.gz -C current/stories-bank
+      - name: Resolve and await exact local slot
         id: slot
         shell: bash
         run: |
           case "${{ github.event.schedule }}" in
-            "0 3 * * *") slot="08:00" ;;
-            "0 6 * * *") slot="11:00" ;;
-            "30 6 * * *") slot="11:30" ;;
-            "30 9 * * *") slot="14:30" ;;
-            "0 13 * * *") slot="18:00" ;;
-            "30 13 * * *") slot="18:30" ;;
-            "0 16 * * *") slot="21:00" ;;
+            "43 2 * * *") slot="08:00"; target="03:00" ;;
+            "13 6 * * *") slot="11:30"; target="06:30" ;;
+            "13 9 * * *") slot="14:30"; target="09:30" ;;
+            "13 13 * * *") slot="18:30"; target="13:30" ;;
+            "43 15 * * *") slot="21:00"; target="16:00" ;;
             *) exit 2 ;;
           esac
+          target_epoch="$(date -u -d "$(date -u +%F) $target:00" +%s)"
+          now_epoch="$(date -u +%s)"
+          wait_seconds="$((target_epoch - now_epoch))"
+          if (( wait_seconds > 0 )); then
+            echo "Prewarmed; waiting ${wait_seconds}s for $slot Asia/Qyzylorda"
+            sleep "$wait_seconds"
+          elif (( -wait_seconds > 900 )); then
+            echo "Refusing a stale Story slot: $((-wait_seconds))s late" >&2
+            exit 3
+          fi
           echo "time=$slot" >> "$GITHUB_OUTPUT"
       - name: Publish exact approved slot
         working-directory: tools/sreda-instagram-publisher
         env:
           SREDA_IG_ACCESS_TOKEN: ${{ secrets.SREDA_IG_ACCESS_TOKEN }}
           SREDA_IG_USER_ID: ${{ secrets.SREDA_IG_USER_ID }}
-          SREDA_THREADS_ACCESS_TOKEN: ${{ secrets.SREDA_THREADS_ACCESS_TOKEN }}
-          SREDA_THREADS_USERNAME: ${{ secrets.SREDA_THREADS_USERNAME }}
           SREDA_THREADS_AUTOPUBLISH_ENABLED: "false"
           SREDA_CLOUDFLARED: ${{ github.workspace }}/.bin/cloudflared
-          SREDA_STORIES_ROOT: ${{ github.workspace }}/current/2026-08-22-31/stories
-          SREDA_CAROUSELS_ROOT: ${{ github.workspace }}/current/2026-08-22-31/carousels
+          SREDA_STORIES_ROOT: ${{ github.workspace }}/current/stories-bank
         run: node src/schedule-runner.mjs --scheduled-local-time "${{ steps.slot.outputs.time }}"
