@@ -30,6 +30,19 @@ jobs:
       - name: Install dependencies
         working-directory: tools/sreda-instagram-publisher
         run: npm ci
+      - name: Verify encrypted Story calendar and media
+        env:
+          SREDA_STORIES_ASSETS_PASSWORD: ${{ secrets.SREDA_STORIES_ASSETS_PASSWORD }}
+        run: |
+          mkdir -p current/stories-bank /tmp/sreda-content
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in content/stories-2026-08-29-to-2026-09-30.tar.gz.enc \
+            -out /tmp/sreda-content/stories.tar.gz \
+            -pass env:SREDA_STORIES_ASSETS_PASSWORD
+          tar -xzf /tmp/sreda-content/stories.tar.gz -C current/stories-bank
+          cd tools/sreda-instagram-publisher
+          SREDA_STORIES_ROOT="${{ github.workspace }}/current/stories-bank" \
+            node --test test/schedule-assets.test.mjs
       - name: Install cloudflared
         run: |
           mkdir -p .bin
