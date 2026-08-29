@@ -2,6 +2,19 @@ name: SREDA Cloud Autopost
 
 on:
   workflow_dispatch:
+    inputs:
+      story_slot:
+        description: Verify only, or rescue one current-day Story slot
+        required: true
+        default: verify
+        type: choice
+        options:
+          - verify
+          - "08:00"
+          - "11:30"
+          - "14:30"
+          - "18:30"
+          - "21:00"
   schedule:
     # Start off-peak and prewarm 17 minutes before each Qyzylorda slot.
     - cron: "43 2 * * *"
@@ -19,7 +32,7 @@ permissions:
 
 jobs:
   verify:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.story_slot == 'verify'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -59,7 +72,10 @@ jobs:
         run: node src/cloud-verify.mjs
 
   publish:
-    if: github.event_name == 'schedule' && github.run_attempt == 1
+    if: >-
+      github.run_attempt == 1 &&
+      (github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.story_slot != 'verify'))
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -89,12 +105,13 @@ jobs:
         id: slot
         shell: bash
         run: |
-          case "${{ github.event.schedule }}" in
-            "43 2 * * *") slot="08:00"; target="03:00" ;;
-            "13 6 * * *") slot="11:30"; target="06:30" ;;
-            "13 9 * * *") slot="14:30"; target="09:30" ;;
-            "13 13 * * *") slot="18:30"; target="13:30" ;;
-            "43 15 * * *") slot="21:00"; target="16:00" ;;
+          trigger="${{ github.event_name == 'schedule' && github.event.schedule || inputs.story_slot }}"
+          case "$trigger" in
+            "43 2 * * *"|"08:00") slot="08:00"; target="03:00" ;;
+            "13 6 * * *"|"11:30") slot="11:30"; target="06:30" ;;
+            "13 9 * * *"|"14:30") slot="14:30"; target="09:30" ;;
+            "13 13 * * *"|"18:30") slot="18:30"; target="13:30" ;;
+            "43 15 * * *"|"21:00") slot="21:00"; target="16:00" ;;
             *) exit 2 ;;
           esac
           target_epoch="$(date -u -d "$(date -u +%F) $target:00" +%s)"
