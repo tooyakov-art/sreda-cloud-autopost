@@ -168,12 +168,16 @@ export class InstagramClient {
   }
 
   async verifyProfile({ expectedUsername } = {}) {
-    const profile = await this.request(`${this.userId}?fields=id,username`, { retry: true });
-    const id = assertGraphObjectId(profile.id, "Instagram user ID");
+    const profile = await this.request("me?fields=id,user_id,username", { retry: true });
+    assertGraphObjectId(profile.id, "Instagram app-scoped ID");
+    const id = String(profile.user_id ?? "");
+    if (!/^\d+$/.test(id)) {
+      throw new InstagramApiError("Instagram API не вернул publishing user_id");
+    }
     const username = String(profile.username || "").trim();
     if (!username) throw new InstagramApiError("Instagram API не вернул username");
     if (id !== this.userId) {
-      throw new InstagramApiError(`Маркер принадлежит Instagram user ID ${id}, ожидался ${this.userId}`);
+      throw new InstagramApiError(`Маркер принадлежит Instagram user_id ${id}, ожидался ${this.userId}`);
     }
     if (expectedUsername && username.toLowerCase() !== String(expectedUsername).replace(/^@/, "").toLowerCase()) {
       throw new InstagramApiError(`Маркер принадлежит @${username}, ожидался @${String(expectedUsername).replace(/^@/, "")}`);

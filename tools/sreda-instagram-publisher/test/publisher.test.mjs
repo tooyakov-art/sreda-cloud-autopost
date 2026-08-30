@@ -413,11 +413,17 @@ test("Client rejects non-HTTPS media", async () => {
   await assert.rejects(() => client.createStoryContainer("http://localhost/story.jpg"), /HTTPS/);
 });
 
-test("Client verifies the exact Instagram profile before live publishing", async () => {
+test("Client verifies the configured Instagram target by publishing ID and username", async () => {
   const client = new InstagramClient({
     accessToken: "test-secret-token",
     userId: "777",
-    fetchImpl: async () => response({ id: "777", username: "sreda.astana" }),
+    // `id` is app-scoped; `user_id` is the professional publishing target.
+    fetchImpl: async (url) => {
+      const parsed = new URL(url);
+      assert.ok(parsed.pathname.endsWith("/me"));
+      assert.equal(parsed.searchParams.get("fields"), "id,user_id,username");
+      return response({ id: "888", user_id: "777", username: "sreda.astana" });
+    },
   });
   assert.deepEqual(
     await client.verifyProfile({ expectedUsername: "@sreda.astana" }),
@@ -426,6 +432,15 @@ test("Client verifies the exact Instagram profile before live publishing", async
   await assert.rejects(
     () => client.verifyProfile({ expectedUsername: "wrong.account" }),
     /ожидался @wrong\.account/,
+  );
+  const wrongTarget = new InstagramClient({
+    accessToken: "test-secret-token",
+    userId: "999",
+    fetchImpl: async () => response({ id: "888", user_id: "777", username: "sreda.astana" }),
+  });
+  await assert.rejects(
+    () => wrongTarget.verifyProfile({ expectedUsername: "sreda.astana" }),
+    /user_id 777, ожидался 999/,
   );
 });
 
