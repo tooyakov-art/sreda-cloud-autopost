@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { stageMediaFile } from "./media-stage.mjs";
 import { getRunningStage, publicUrlForRoute, startStage, stopStage } from "./stage-controller.mjs";
-import { publishCarouselIdempotent, publishStoryIdempotent } from "./publisher.mjs";
+import { publishCarouselIdempotent } from "./publisher.mjs";
 import { pollInstagramDirect } from "./direct-poller.mjs";
 import { loadDirectConfig } from "./direct-router.mjs";
 import { clientFromEnv } from "./secrets.mjs";
@@ -118,9 +118,9 @@ async function main() {
       print({ ok: true, dryRun: true, action: "publish-story", imageUrl, idempotencyKey: key, graphBase: "https://graph.instagram.com/v23.0" });
       return;
     }
-    const result = await publishStoryIdempotent({ client: await clientFromEnv(), ledgerFile: LEDGER, key, imageUrl, inputIdentity });
-    print({ ok: true, action: "publish-story", ...result });
-    return;
+    throw new Error(
+      "Live Story разрешена только через двухфазный GitHub workflow с durable pre-publish checkpoint",
+    );
   }
 
   if (command === "carousel") {

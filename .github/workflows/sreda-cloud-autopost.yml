@@ -24,7 +24,17 @@ on:
     - cron: "43 15 * * *"
 
 concurrency:
-  group: sreda-cloud-autopost
+  # Verify never blocks live work. Live runs serialize per logical slot, so a
+  # delayed cron for another time cannot evict a pending watchdog rescue.
+  group: >-
+    sreda-cloud-autopost-${{
+      (inputs.story_slot == '08:00' || github.event.schedule == '43 2 * * *') && 'story-0800' ||
+      (inputs.story_slot == '11:30' || github.event.schedule == '13 6 * * *') && 'story-1130' ||
+      (inputs.story_slot == '14:30' || github.event.schedule == '13 9 * * *') && 'story-1430' ||
+      (inputs.story_slot == '18:30' || github.event.schedule == '13 13 * * *') && 'story-1830' ||
+      (inputs.story_slot == '21:00' || github.event.schedule == '43 15 * * *') && 'story-2100' ||
+      inputs.story_slot == 'verify' && 'verify' || 'unknown'
+    }}
   cancel-in-progress: false
 
 permissions:
@@ -132,22 +142,69 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: tools/sreda-instagram-publisher/.runtime/publication-ledger.json
-          key: ${{ steps.slot.outputs.ledger_key }}
-      - name: Publish exact approved slot
+          key: ${{ steps.slot.outputs.ledger_key }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ steps.slot.outputs.ledger_key }}-
+      - name: Prepare exact approved Story container
+        id: prepare_story
         working-directory: tools/sreda-instagram-publisher
         env:
           SREDA_IG_ACCESS_TOKEN: ${{ secrets.SREDA_IG_ACCESS_TOKEN }}
           SREDA_IG_USER_ID: ${{ secrets.SREDA_IG_USER_ID }}
+          SREDA_IG_USERNAME: sreda.astana
           SREDA_THREADS_AUTOPUBLISH_ENABLED: "false"
           SREDA_CLOUDFLARED: ${{ github.workspace }}/.bin/cloudflared
           SREDA_STORIES_ROOT: ${{ github.workspace }}/current/stories-bank
-        run: node src/schedule-runner.mjs --scheduled-local-time "${{ steps.slot.outputs.time }}"
-      - name: Save durable publication ledger
-        if: >-
-          always() &&
-          steps.story_ledger.outputs.cache-hit != 'true' &&
-          hashFiles('tools/sreda-instagram-publisher/.runtime/publication-ledger.json') != ''
+        run: >-
+          node src/schedule-runner.mjs
+          --scheduled-local-time "${{ steps.slot.outputs.time }}"
+          --story-phase prepare
+      - name: Save prepared Story checkpoint
+        id: prepared_checkpoint
+        if: steps.prepare_story.outputs.needs_publish == 'true'
         uses: actions/cache/save@v4
         with:
           path: tools/sreda-instagram-publisher/.runtime/publication-ledger.json
-          key: ${{ steps.slot.outputs.ledger_key }}
+          key: ${{ steps.slot.outputs.ledger_key }}-${{ github.run_id }}-prepared
+      - name: Reserve one durable media_publish attempt
+        id: reserve_story
+        if: steps.prepare_story.outputs.needs_publish == 'true'
+        working-directory: tools/sreda-instagram-publisher
+        env:
+          SREDA_STORIES_ROOT: ${{ github.workspace }}/current/stories-bank
+        run: >-
+          node src/schedule-runner.mjs
+          --scheduled-local-time "${{ steps.slot.outputs.time }}"
+          --story-phase reserve
+          --reservation-id "${{ github.run_id }}"
+      - name: Save durable pre-publish reservation
+        id: reservation_checkpoint
+        if: steps.prepare_story.outputs.needs_publish == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: tools/sreda-instagram-publisher/.runtime/publication-ledger.json
+          key: ${{ steps.slot.outputs.ledger_key }}-${{ github.run_id }}-reserved
+      - name: Publish only the durably reserved Story
+        id: publish_story
+        if: steps.prepare_story.outputs.needs_publish == 'true'
+        working-directory: tools/sreda-instagram-publisher
+        env:
+          SREDA_IG_ACCESS_TOKEN: ${{ secrets.SREDA_IG_ACCESS_TOKEN }}
+          SREDA_IG_USER_ID: ${{ secrets.SREDA_IG_USER_ID }}
+          SREDA_IG_USERNAME: sreda.astana
+          SREDA_THREADS_AUTOPUBLISH_ENABLED: "false"
+          SREDA_STORIES_ROOT: ${{ github.workspace }}/current/stories-bank
+        run: >-
+          node src/schedule-runner.mjs
+          --scheduled-local-time "${{ steps.slot.outputs.time }}"
+          --story-phase publish
+          --reservation-id "${{ github.run_id }}"
+      - name: Save final or uncertain Story state
+        if: >-
+          always() &&
+          steps.prepare_story.outputs.needs_publish == 'true' &&
+          steps.reservation_checkpoint.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: tools/sreda-instagram-publisher/.runtime/publication-ledger.json
+          key: ${{ steps.slot.outputs.ledger_key }}-${{ github.run_id }}-final

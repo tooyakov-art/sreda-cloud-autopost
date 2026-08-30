@@ -7,12 +7,14 @@
 
 Public repo не является местом для черновиков или согласования.
 
-## 2. Единственный production scheduler
+## 2. Production scheduler и независимый watchdog
 
-Активен workflow `SREDA Cloud Autopost`. Другие механизмы должны быть выключены:
+Stories публикует только workflow `SREDA Cloud Autopost`. Heartbeat `SREDA Stories — watchdog` является независимым dispatcher: заранее вызывает этот же workflow с точным `story_slot`, проверяет результат и никогда не обращается к Meta напрямую.
+
+Другие механизмы должны быть выключены:
 
 - Windows Scheduled Task;
-- ChatGPT heartbeat;
+- другие ChatGPT/Codex automations для Stories;
 - GitHub Actions workflow в private context repo;
 - ручные браузерные публикации как параллельная автоматизация.
 
@@ -26,7 +28,7 @@ Public repo не является местом для черновиков ил�
 - `SREDA_IG_USER_ID`
 - `SREDA_THREADS_ACCESS_TOKEN`
 - `SREDA_THREADS_USERNAME`
-- `SREDA_ASSETS_PASSWORD`
+- `SREDA_STORIES_ASSETS_PASSWORD`
 
 Проверяется только наличие. Значения никогда не копируются в issue, PR, commit, workflow YAML, команды или чат.
 
@@ -34,19 +36,17 @@ Public repo не является местом для черновиков ил�
 
 GitHub cron работает в UTC. Проект работает в `Asia/Qyzylorda`, UTC+5.
 
-| Cron UTC | Локально | Возможное действие |
+| Prewarm cron UTC | Локально | Возможное действие |
 |---:|---:|---|
-| 03:00 | 08:00 | Story |
-| 06:00 | 11:00 | Carousel |
-| 06:30 | 11:30 | Story |
-| 09:30 | 14:30 | Story |
-| 13:00 | 18:00 | Carousel |
-| 13:30 | 18:30 | Story |
-| 16:00 | 21:00 | Story |
+| 02:43 | 08:00 | Story |
+| 06:13 | 11:30 | Story |
+| 09:13 | 14:30 | Story |
+| 13:13 | 18:30 | Story |
+| 15:43 | 21:00 | Story |
 
 Автопубликация Threads отключена: её cron-слоты удалены, а runner по умолчанию блокирует публикацию Threads.
 
-GitHub может запустить cron позже указанной минуты. Workflow передаёт runner намеренный локальный слот через `--scheduled-local-time`, поэтому небольшой lag не меняет материал.
+GitHub schedule в production наблюдался с задержками в несколько часов, поэтому не считается SLA-механизмом. Watchdog делает несколько проверок до и после каждого слота: за 25–5 минут он dispatch'ит точный slot, а после публикации сверяет `kind=story`, `localSlot` и числовой Meta publication ID. Workflow всё равно откажется от фактического `media_publish` после +15 минут.
 
 ## 5. Что делает scheduled job
 
@@ -56,14 +56,15 @@ GitHub может запустить cron позже указанной мину
 4. Расшифровка `content/*.enc` во временную файловую систему runner.
 5. Перевод cron в локальный слот.
 6. Поиск точного действия в `schedule.mjs`.
-7. Сверка Instagram/Threads аккаунта.
-8. Для Instagram — временный Cloudflare Quick Tunnel, ожидание DNS/health и публикация через Meta API.
-9. Для Threads — публикация текста через официальный Threads API.
-10. Завершение runner; расшифрованные файлы и временный staging исчезают.
+7. Обязательная сверка Instagram user ID и username `sreda.astana`.
+8. Подготовка Story-контейнера через временный Cloudflare Quick Tunnel без публикации.
+9. Сохранение prepared checkpoint, затем отдельной durable-брони единственного `media_publish`.
+10. Meta POST запускается только после успешного сохранения брони; затем сохраняется final/uncertain state.
+11. Завершение runner; расшифрованные файлы и временный staging исчезают.
 
-## 6. Ручная проверка без публикации
+## 6. Ручной dispatch
 
-`Actions → SREDA Cloud Autopost → Run workflow` запускает только job `verify`.
+`Actions → SREDA Cloud Autopost → Run workflow` с оставленным значением `verify` запускает только проверку.
 
 Она проверяет:
 
@@ -71,7 +72,7 @@ GitHub может запустить cron позже указанной мину
 - доступ к Threads `sreda.astana`;
 - доступность временного HTTPS staging.
 
-Ручной dispatch ничего не публикует. Это безопасная проверка после обновления tokens, кода или staging.
+Значения `08:00`, `11:30`, `14:30`, `18:30`, `21:00` являются live-входами для watchdog. Они не предназначены для произвольного ручного запуска: workflow разрешает только текущую локальную дату, блокирует запуск позднее +15 минут и использует durable ledger против дублей.
 
 ## 7. Тесты перед push
 
@@ -109,12 +110,16 @@ git status --short
 
 ## 9. Дубли и повторные запуски
 
-Runner создаёт уникальный ключ для каждого слота, а workflow использует одну concurrency group. Но GitHub-hosted runner временный: локальный ledger не сохраняется между job.
+Runner создаёт уникальный ключ для каждого слота, а live concurrency разделена по логическому Story-слоту; `verify` и задержавшийся другой слот не могут вытеснить pending rescue. Ledger сохраняется между временными GitHub runners в версионированных cache-записях с restore-prefix.
 
 Поэтому:
 
 - не нажимать `Re-run jobs` для scheduled live-run вслепую;
-- сначала проверить Instagram/Threads;
+- до `media_publish` workflow отдельно сохраняет prepared checkpoint и durable `publishAttemptedAt`; если сохранение брони не подтвердилось, Meta POST вообще не запускается;
+- незавершённый контейнер до POST не сохраняется как durable publication state;
+- Meta propagation `media … cannot be found` проверяется повторными безопасными GET;
+- сразу перед POST повторно проверяется абсолютный deadline +15 минут;
+- сначала проверить Instagram и логи workflow;
 - если публикация уже есть, повтор запрещён;
 - если статус Meta неясен, зафиксировать run URL и media/container ID, затем разбираться без нового publish.
 
@@ -122,7 +127,7 @@ Runner создаёт уникальный ключ для каждого сло
 
 | Симптом | Проверка | Действие |
 |---|---|---|
-| Workflow не запускается | Actions enabled, GitHub status, default branch | Не включать локальный дубль; восстановить cloud workflow |
+| Workflow не запускается | Actions enabled, GitHub status, default branch, heartbeat | Watchdog dispatch'ит тот же workflow; не включать иной publisher |
 | `permission` / token error | Meta permissions и expiry | Обновить Secret, затем ручной `verify` |
 | staging/DNS timeout | Лог шага verify/publish | Запустить только `verify`; live повторять после проверки профиля |
 | файл/папка отсутствует | Структура после расшифровки и тесты | Пересобрать `.enc`, не коммитить открытые файлы |

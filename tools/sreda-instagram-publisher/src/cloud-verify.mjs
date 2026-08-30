@@ -14,10 +14,7 @@ if (!cloudflaredPath) throw new Error("Задайте SREDA_CLOUDFLARED");
 let stage;
 try {
   const instagram = await clientFromEnv();
-  const instagramProfile = await instagram.request(`${instagram.userId}?fields=id,username`);
-  if (instagramProfile.username !== "sreda.astana") {
-    throw new Error(`Instagram-профиль не совпал: ${instagramProfile.username || "unknown"}`);
-  }
+  const instagramProfile = await instagram.verifyProfile({ expectedUsername: "sreda.astana" });
 
   const threads = await threadsClientFromEnv();
   const threadsProfile = await threads.verifyProfile({

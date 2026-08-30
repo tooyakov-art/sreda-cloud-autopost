@@ -3,7 +3,12 @@ import path from "node:path";
 import { appendFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { stageMediaFile } from "./media-stage.mjs";
-import { publishCarouselIdempotent, publishStoryIdempotent } from "./publisher.mjs";
+import {
+  prepareStoryIdempotent,
+  publishCarouselIdempotent,
+  publishReservedStory,
+  reserveStoryPublication,
+} from "./publisher.mjs";
 import {
   carouselFilesForAction,
   localSlot,
@@ -26,7 +31,13 @@ const CAROUSELS_ROOT = process.env.SREDA_CAROUSELS_ROOT || path.join(WORKSPACE, 
 const CLOUDFLARED = process.env.SREDA_CLOUDFLARED || "C:\\Users\\tuako\\.codex\\tools\\cloudflared\\cloudflared.exe";
 
 function parseArgs(argv) {
-  const options = { dryRun: false, at: null, scheduledLocalTime: null };
+  const options = {
+    dryRun: false,
+    at: null,
+    scheduledLocalTime: null,
+    storyPhase: null,
+    reservationId: null,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--dry-run") options.dryRun = true;
     else if (argv[index] === "--at") {
@@ -35,6 +46,12 @@ function parseArgs(argv) {
     } else if (argv[index] === "--scheduled-local-time") {
       if (!argv[index + 1]) throw new Error("Нет значения для --scheduled-local-time");
       options.scheduledLocalTime = argv[++index];
+    } else if (argv[index] === "--story-phase") {
+      if (!argv[index + 1]) throw new Error("Нет значения для --story-phase");
+      options.storyPhase = argv[++index];
+    } else if (argv[index] === "--reservation-id") {
+      if (!argv[index + 1]) throw new Error("Нет значения для --reservation-id");
+      options.reservationId = argv[++index];
     } else throw new Error(`Неизвестный аргумент: ${argv[index]}`);
   }
   if (options.at && !options.dryRun) {
@@ -48,18 +65,40 @@ function parseArgs(argv) {
       throw new Error("--scheduled-local-time должен иметь формат HH:MM");
     }
   }
+  if (options.storyPhase && !["prepare", "reserve", "publish"].includes(options.storyPhase)) {
+    throw new Error("--story-phase должен быть prepare, reserve или publish");
+  }
+  if (options.storyPhase && !options.scheduledLocalTime) {
+    throw new Error("--story-phase разрешён только с --scheduled-local-time в GitHub Actions");
+  }
+  if (["reserve", "publish"].includes(options.storyPhase) && !options.reservationId) {
+    throw new Error("Для reserve/publish обязателен --reservation-id");
+  }
   return options;
+}
+
+async function writeGithubOutputs(values) {
+  if (!process.env.GITHUB_OUTPUT) return;
+  const lines = Object.entries(values).map(([key, value]) => `${key}=${value}\n`).join("");
+  await appendFile(process.env.GITHUB_OUTPUT, lines, "utf8");
+}
+
+function storyDeadline(plan) {
+  return new Date(parseAt(plan.localSlot.replace(" ", "T")).getTime() + 15 * 60_000);
+}
+
+function describeStoryIdentity(action) {
+  return {
+    kind: "story",
+    localSlot: action.local.key,
+    idempotencyKey: `sreda-story-${action.local.date}-${action.local.time.replace(":", "")}-${String(action.storyIndex + 1).padStart(2, "0")}`,
+  };
 }
 
 async function describeAction(action) {
   if (action.kind === "story") {
     const file = await storyFileForAction(action, STORIES_ROOT);
-    return {
-      kind: "story",
-      localSlot: action.local.key,
-      file,
-      idempotencyKey: `sreda-story-${action.local.date}-${action.local.time.replace(":", "")}-${String(action.storyIndex + 1).padStart(2, "0")}`,
-    };
+    return { ...describeStoryIdentity(action), file };
   }
   if (action.kind === "threads-text") {
     return {
@@ -122,6 +161,47 @@ async function run() {
     return;
   }
 
+  // После удалённого сохранения durable-брони выполняем только неизбежные
+  // локальные чтения журнала/секретов, проверку срока и единственный POST.
+  // Файлы и профиль Meta уже проверены до брони на prepare-фазе.
+  if (action.kind === "story" && ["reserve", "publish"].includes(options.storyPhase)) {
+    const story = describeStoryIdentity(action);
+    const publishDeadline = storyDeadline(story);
+    if (options.storyPhase === "reserve") {
+      const result = await reserveStoryPublication({
+        ledgerFile: LEDGER,
+        key: story.idempotencyKey,
+        reservationId: options.reservationId,
+        publishDeadline,
+      });
+      process.stdout.write(`${JSON.stringify({
+        ok: true,
+        kind: "story",
+        phase: "reserve",
+        localSlot: story.localSlot,
+        ...result,
+      }, null, 2)}\n`);
+      return;
+    }
+
+    const client = await clientFromEnv();
+    const result = await publishReservedStory({
+      client,
+      ledgerFile: LEDGER,
+      key: story.idempotencyKey,
+      reservationId: options.reservationId,
+      publishDeadline,
+    });
+    process.stdout.write(`${JSON.stringify({
+      ok: true,
+      kind: "story",
+      phase: "publish",
+      localSlot: story.localSlot,
+      ...result,
+    }, null, 2)}\n`);
+    return;
+  }
+
   const plan = await describeAction(action);
   if (options.dryRun) {
     process.stdout.write(`${JSON.stringify({
@@ -153,24 +233,52 @@ async function run() {
     return;
   }
 
-  let shouldStopStage = false;
-  try {
-    const stage = await startStage({ runtimeDir: RUNTIME, cloudflaredPath: CLOUDFLARED });
-    shouldStopStage = !stage.reused;
-    const client = await clientFromEnv();
-    if (plan.kind === "story") {
+  if (plan.kind === "story") {
+    if (options.storyPhase !== "prepare") {
+      throw new Error("Live Story требует prepare/reserve/publish workflow");
+    }
+    const publishDeadline = storyDeadline(plan);
+
+    let shouldStopStoryStage = false;
+    try {
+      const client = await clientFromEnv();
+      await client.verifyProfile({
+        expectedUsername: process.env.SREDA_IG_USERNAME || "sreda.astana",
+      });
+      const stage = await startStage({ runtimeDir: RUNTIME, cloudflaredPath: CLOUDFLARED });
+      shouldStopStoryStage = !stage.reused;
       const [item] = await stageFiles([plan.file]);
-      const result = await publishStoryIdempotent({
+      const result = await prepareStoryIdempotent({
         client,
         ledgerFile: LEDGER,
         key: plan.idempotencyKey,
         imageUrl: item.url,
         inputIdentity: item.identity,
+        publishDeadline,
       });
-      process.stdout.write(`${JSON.stringify({ ok: true, kind: "story", localSlot: plan.localSlot, file: plan.file, ...result }, null, 2)}\n`);
+      await writeGithubOutputs({ needs_publish: result.needsPublish === true });
+      process.stdout.write(`${JSON.stringify({
+        ok: true,
+        kind: "story",
+        phase: "prepare",
+        localSlot: plan.localSlot,
+        file: plan.file,
+        ...result,
+      }, null, 2)}\n`);
       return;
+    } finally {
+      if (shouldStopStoryStage) await stopStage(RUNTIME);
     }
+  }
 
+  let shouldStopStage = false;
+  try {
+    const client = await clientFromEnv();
+    await client.verifyProfile({
+      expectedUsername: process.env.SREDA_IG_USERNAME || "sreda.astana",
+    });
+    const stage = await startStage({ runtimeDir: RUNTIME, cloudflaredPath: CLOUDFLARED });
+    shouldStopStage = !stage.reused;
     const items = await stageFiles(plan.files);
     const result = await publishCarouselIdempotent({
       client,

@@ -167,6 +167,20 @@ export class InstagramClient {
     return this.request(`${this.userId}/conversations?${params}`, { retry: true });
   }
 
+  async verifyProfile({ expectedUsername } = {}) {
+    const profile = await this.request(`${this.userId}?fields=id,username`, { retry: true });
+    const id = assertGraphObjectId(profile.id, "Instagram user ID");
+    const username = String(profile.username || "").trim();
+    if (!username) throw new InstagramApiError("Instagram API не вернул username");
+    if (id !== this.userId) {
+      throw new InstagramApiError(`Маркер принадлежит Instagram user ID ${id}, ожидался ${this.userId}`);
+    }
+    if (expectedUsername && username.toLowerCase() !== String(expectedUsername).replace(/^@/, "").toLowerCase()) {
+      throw new InstagramApiError(`Маркер принадлежит @${username}, ожидался @${String(expectedUsername).replace(/^@/, "")}`);
+    }
+    return { id, username };
+  }
+
   async listConversationMessages(conversationId, { limit = 20 } = {}) {
     const id = assertGraphObjectId(conversationId, "Conversation ID");
     const pageLimit = assertPageLimit(limit, 20);
