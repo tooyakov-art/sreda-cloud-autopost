@@ -49,6 +49,17 @@ function assertText(value) {
   return value.trim();
 }
 
+function assertHttpsUrl(value, label = "URL") {
+  let parsed;
+  try {
+    parsed = new URL(String(value));
+  } catch {
+    throw new TypeError(`${label} должен быть корректным URL`);
+  }
+  if (parsed.protocol !== "https:") throw new TypeError(`${label} должен использовать HTTPS`);
+  return parsed.toString();
+}
+
 function assertUserId(value) {
   if (!/^\d+$/.test(String(value))) {
     throw new TypeError("Threads user ID должен состоять из цифр");
@@ -158,6 +169,40 @@ export class ThreadsClient {
     });
     if (!result.id) throw new ThreadsApiError("Threads не вернул ID текстового контейнера");
     return String(result.id);
+  }
+
+  async createImageContainer({ imageUrl, text }) {
+    const id = await this.userId();
+    const result = await this.request(`${id}/threads`, {
+      method: "POST",
+      body: {
+        media_type: "IMAGE",
+        image_url: assertHttpsUrl(imageUrl, "Threads image_url"),
+        text: assertText(text),
+      },
+      retry: true,
+    });
+    if (!result.id) throw new ThreadsApiError("Threads не вернул ID контейнера изображения");
+    return String(result.id);
+  }
+
+  async listRecentThreads({ limit = 25 } = {}) {
+    const numericLimit = Number(limit);
+    if (!Number.isInteger(numericLimit) || numericLimit < 1 || numericLimit > 100) {
+      throw new TypeError("Threads limit должен быть целым числом от 1 до 100");
+    }
+    const id = await this.userId();
+    const fields = "id,text,timestamp,media_type,permalink";
+    const result = await this.request(
+      `${id}/threads?fields=${encodeURIComponent(fields)}&limit=${numericLimit}`,
+      { retry: true },
+    );
+    return Array.isArray(result.data) ? result.data : [];
+  }
+
+  async getThread(threadId) {
+    const id = assertUserId(threadId);
+    return this.request(`${id}?fields=id,text,timestamp,media_type,permalink`, { retry: true });
   }
 
   async getContainerStatus(containerId) {

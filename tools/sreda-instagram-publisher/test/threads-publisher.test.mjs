@@ -137,3 +137,30 @@ test("Threads waits for FINISHED before calling numeric user threads_publish", a
   assert.equal(calls.at(-1).path, "/v1.0/27792043467134953/threads_publish");
   assert.equal(statusCalls, 2);
 });
+
+test("Threads creates IMAGE container with HTTPS media and lists recent posts", async () => {
+  const calls = [];
+  const client = new ThreadsClient({
+    accessToken: "threads-test-secret",
+    fetchImpl: async (url, options = {}) => {
+      const parsed = new URL(url);
+      const body = options.body ? Object.fromEntries(options.body.entries()) : {};
+      calls.push({ parsed, method: options.method || "GET", body });
+      if (parsed.pathname.endsWith("/me")) return response({ id: "777", username: "sreda.astana" });
+      if ((options.method || "GET") === "POST") return response({ id: "888" });
+      return response({ data: [{ id: "999", text: "Recent", permalink: "https://threads.example/999" }] });
+    },
+  });
+  await client.verifyProfile();
+  const container = await client.createImageContainer({ imageUrl: "https://media.example/post.jpg", text: "Image post" });
+  assert.equal(container, "888");
+  assert.deepEqual(calls[1].body, {
+    media_type: "IMAGE",
+    image_url: "https://media.example/post.jpg",
+    text: "Image post",
+  });
+  const recent = await client.listRecentThreads({ limit: 50 });
+  assert.equal(recent[0].id, "999");
+  assert.equal(calls[2].parsed.searchParams.get("limit"), "50");
+  await assert.rejects(() => client.createImageContainer({ imageUrl: "http://unsafe.example/post.jpg", text: "No" }), /HTTPS/);
+});

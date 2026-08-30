@@ -1,0 +1,143 @@
+name: SREDA Threads September
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Verify calendar/media or publish one exact post
+        required: true
+        default: verify
+        type: choice
+        options:
+          - verify
+          - publish
+      post_id:
+        description: Exact post ID for publish mode, for example TH-LAUNCH-01
+        required: false
+        default: TH-LAUNCH-01
+        type: string
+  schedule:
+    # 15:30 Asia/Qyzylorda. Start 17 minutes early and wait for the exact slot.
+    - cron: "13 10 * * *"
+
+concurrency:
+  group: sreda-threads-september-live
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'verify'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        working-directory: tools/sreda-instagram-publisher
+        run: npm ci
+      - name: Decrypt Threads media bank
+        env:
+          SREDA_THREADS_ASSETS_PASSWORD: ${{ secrets.SREDA_THREADS_ASSETS_PASSWORD }}
+        run: |
+          mkdir -p current/threads-bank "$RUNNER_TEMP/sreda-threads"
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in content/threads-2026-09-assets.tar.gz.enc \
+            -out "$RUNNER_TEMP/sreda-threads/assets.tar.gz" \
+            -pass env:SREDA_THREADS_ASSETS_PASSWORD
+          tar -xzf "$RUNNER_TEMP/sreda-threads/assets.tar.gz" -C current/threads-bank
+      - name: Verify calendar, media and Threads account
+        working-directory: tools/sreda-instagram-publisher
+        env:
+          SREDA_THREADS_ACCESS_TOKEN: ${{ secrets.SREDA_THREADS_ACCESS_TOKEN }}
+          SREDA_THREADS_USERNAME: ${{ secrets.SREDA_THREADS_USERNAME }}
+          SREDA_THREADS_ROOT: ${{ github.workspace }}/current/threads-bank
+        run: node src/threads-september-verify.mjs
+
+  publish:
+    if: >-
+      github.run_attempt == 1 &&
+      (github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        working-directory: tools/sreda-instagram-publisher
+        run: npm ci
+      - name: Install cloudflared
+        run: |
+          mkdir -p .bin
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o .bin/cloudflared
+          chmod +x .bin/cloudflared
+      - name: Decrypt Threads media bank
+        env:
+          SREDA_THREADS_ASSETS_PASSWORD: ${{ secrets.SREDA_THREADS_ASSETS_PASSWORD }}
+        run: |
+          mkdir -p current/threads-bank "$RUNNER_TEMP/sreda-threads"
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in content/threads-2026-09-assets.tar.gz.enc \
+            -out "$RUNNER_TEMP/sreda-threads/assets.tar.gz" \
+            -pass env:SREDA_THREADS_ASSETS_PASSWORD
+          tar -xzf "$RUNNER_TEMP/sreda-threads/assets.tar.gz" -C current/threads-bank
+      - name: Resolve exact post and await scheduled slot
+        id: slot
+        shell: bash
+        env:
+          INPUT_POST_ID: ${{ inputs.post_id }}
+        run: |
+          if [[ "${{ github.event_name }}" == "schedule" ]]; then
+            target_epoch="$(date -u -d "$(date -u +%F) 10:30:00" +%s)"
+            now_epoch="$(date -u +%s)"
+            wait_seconds="$((target_epoch - now_epoch))"
+            if (( wait_seconds > 0 )); then
+              echo "Prewarmed; waiting ${wait_seconds}s for 15:30 Asia/Qyzylorda"
+              sleep "$wait_seconds"
+            elif (( -wait_seconds > 900 )); then
+              echo "Refusing stale Threads slot: $((-wait_seconds))s late" >&2
+              exit 3
+            fi
+            local_day="$(TZ=Asia/Qyzylorda date +%d)"
+            post_id="TH-SEP-${local_day}"
+            echo "args=--scheduled-local-time 15:30" >> "$GITHUB_OUTPUT"
+          else
+            post_id="$INPUT_POST_ID"
+            if [[ ! "$post_id" =~ ^TH-(LAUNCH-01|SEP-(0[1-9]|[12][0-9]|30))$ ]]; then
+              echo "Invalid post_id: $post_id" >&2
+              exit 2
+            fi
+            echo "args=--post-id $post_id" >> "$GITHUB_OUTPUT"
+          fi
+          echo "post_id=$post_id" >> "$GITHUB_OUTPUT"
+      - name: Restore durable Threads ledger
+        id: threads_ledger
+        uses: actions/cache/restore@v4
+        with:
+          path: tools/sreda-instagram-publisher/.runtime-threads/publication-ledger.json
+          key: sreda-threads-ledger-${{ steps.slot.outputs.post_id }}
+      - name: Publish one exact Threads post
+        working-directory: tools/sreda-instagram-publisher
+        env:
+          SREDA_THREADS_ACCESS_TOKEN: ${{ secrets.SREDA_THREADS_ACCESS_TOKEN }}
+          SREDA_THREADS_USERNAME: ${{ secrets.SREDA_THREADS_USERNAME }}
+          SREDA_THREADS_AUTOPUBLISH_ENABLED: "true"
+          SREDA_THREADS_ROOT: ${{ github.workspace }}/current/threads-bank
+          SREDA_CLOUDFLARED: ${{ github.workspace }}/.bin/cloudflared
+        run: node src/threads-september-runner.mjs ${{ steps.slot.outputs.args }}
+      - name: Save durable Threads ledger
+        if: >-
+          always() &&
+          steps.threads_ledger.outputs.cache-hit != 'true' &&
+          hashFiles('tools/sreda-instagram-publisher/.runtime-threads/publication-ledger.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: tools/sreda-instagram-publisher/.runtime-threads/publication-ledger.json
+          key: sreda-threads-ledger-${{ steps.slot.outputs.post_id }}
