@@ -1,0 +1,136 @@
+name: SREDA One-off Approved Story
+
+on:
+  workflow_dispatch:
+    inputs:
+      story_id:
+        description: Exact approved one-off Story
+        required: true
+        type: choice
+        options:
+          - constitution-day-2026
+
+concurrency:
+  group: sreda-one-off-story-${{ inputs.story_id }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  ONE_OFF_PUBLISH_DEADLINE: "2026-08-31T01:04:00Z"
+
+jobs:
+  publish:
+    if: github.run_attempt == 1 && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Refuse every second dispatch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const response = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "sreda-one-off-story.yml",
+              branch: "main",
+              event: "workflow_dispatch",
+              per_page: 100,
+            });
+            const otherRuns = response.data.workflow_runs.filter(
+              (run) => run.id !== Number(context.runId),
+            );
+            if (otherRuns.length > 0) {
+              core.setFailed(`One-off Story already has another dispatch: ${otherRuns[0].html_url}`);
+            }
+      - name: Enforce absolute one-off deadline
+        shell: bash
+        run: |
+          now_epoch="$(date -u +%s)"
+          deadline_epoch="$(date -u -d "$ONE_OFF_PUBLISH_DEADLINE" +%s)"
+          if (( now_epoch > deadline_epoch )); then
+            echo "One-off Story deadline has expired: $ONE_OFF_PUBLISH_DEADLINE" >&2
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        working-directory: tools/sreda-instagram-publisher
+        run: npm ci
+      - name: Install cloudflared
+        run: |
+          mkdir -p .bin
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o .bin/cloudflared
+          chmod +x .bin/cloudflared
+      - name: Set one-off safety window
+        id: story
+        shell: bash
+        run: |
+          echo "deadline=$ONE_OFF_PUBLISH_DEADLINE" >> "$GITHUB_OUTPUT"
+          echo "ledger_key=sreda-one-off-${{ inputs.story_id }}" >> "$GITHUB_OUTPUT"
+      - name: Restore durable publication ledger
+        uses: actions/cache/restore@v4
+        with:
+          path: tools/sreda-instagram-publisher/.runtime/publication-ledger.json
+          key: ${{ steps.story.outputs.ledger_key }}-${{ github.run_id }}
+          restore-keys: |
+            ${{ steps.story.outputs.ledger_key }}-
+      - name: Prepare exact approved one-off Story
+        id: prepare_story
+        working-directory: tools/sreda-instagram-publisher
+        env:
+          SREDA_IG_ACCESS_TOKEN: ${{ secrets.SREDA_IG_ACCESS_TOKEN }}
+          SREDA_IG_USER_ID: ${{ secrets.SREDA_IG_USER_ID }}
+          SREDA_CLOUDFLARED: ${{ github.workspace }}/.bin/cloudflared
+        run: >-
+          node src/manual-story-runner.mjs
+          --story-id "${{ inputs.story_id }}"
+          --phase prepare
+          --publish-deadline "${{ steps.story.outputs.deadline }}"
+      - name: Save prepared checkpoint
+        if: steps.prepare_story.outputs.needs_publish == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: tools/sreda-instagram-publisher/.runtime/publication-ledger.json
+          key: ${{ steps.story.outputs.ledger_key }}-${{ github.run_id }}-prepared
+      - name: Reserve one durable media_publish attempt
+        if: steps.prepare_story.outputs.needs_publish == 'true'
+        working-directory: tools/sreda-instagram-publisher
+        run: >-
+          node src/manual-story-runner.mjs
+          --story-id "${{ inputs.story_id }}"
+          --phase reserve
+          --reservation-id "${{ github.run_id }}"
+          --publish-deadline "${{ steps.story.outputs.deadline }}"
+      - name: Save durable pre-publish reservation
+        id: reservation_checkpoint
+        if: steps.prepare_story.outputs.needs_publish == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: tools/sreda-instagram-publisher/.runtime/publication-ledger.json
+          key: ${{ steps.story.outputs.ledger_key }}-${{ github.run_id }}-reserved
+      - name: Publish only the durably reserved Story
+        if: steps.prepare_story.outputs.needs_publish == 'true'
+        working-directory: tools/sreda-instagram-publisher
+        env:
+          SREDA_IG_ACCESS_TOKEN: ${{ secrets.SREDA_IG_ACCESS_TOKEN }}
+          SREDA_IG_USER_ID: ${{ secrets.SREDA_IG_USER_ID }}
+        run: >-
+          node src/manual-story-runner.mjs
+          --story-id "${{ inputs.story_id }}"
+          --phase publish
+          --reservation-id "${{ github.run_id }}"
+          --publish-deadline "${{ steps.story.outputs.deadline }}"
+      - name: Save final or uncertain Story state
+        if: >-
+          always() &&
+          steps.prepare_story.outputs.needs_publish == 'true' &&
+          steps.reservation_checkpoint.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: tools/sreda-instagram-publisher/.runtime/publication-ledger.json
+          key: ${{ steps.story.outputs.ledger_key }}-${{ github.run_id }}-final
