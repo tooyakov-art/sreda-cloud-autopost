@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CAROUSEL_SLOTS,
+  STORY_RELEASE_STATUS,
   STORY_SLOTS,
   STORY_TIMES,
   THREADS_SLOTS,
@@ -9,13 +10,25 @@ import {
   localSlot,
   parseAt,
   resolveScheduledAction,
+  storyAutopublishApproved,
   threadsAutopublishEnabled,
 } from "../src/schedule.mjs";
 
+test("Rejected historical Story release cannot autopublish", () => {
+  assert.equal(STORY_RELEASE_STATUS, "REJECTED_DO_NOT_PUBLISH");
+  assert.equal(storyAutopublishApproved(), false);
+});
+
 test("Threads autopublishing is disabled unless explicitly enabled", () => {
   assert.equal(threadsAutopublishEnabled({}), false);
-  assert.equal(threadsAutopublishEnabled({ SREDA_THREADS_AUTOPUBLISH_ENABLED: "false" }), false);
-  assert.equal(threadsAutopublishEnabled({ SREDA_THREADS_AUTOPUBLISH_ENABLED: "true" }), true);
+  assert.equal(
+    threadsAutopublishEnabled({ SREDA_THREADS_AUTOPUBLISH_ENABLED: "false" }),
+    false,
+  );
+  assert.equal(
+    threadsAutopublishEnabled({ SREDA_THREADS_AUTOPUBLISH_ENABLED: "true" }),
+    true,
+  );
 });
 
 test("Qyzylorda exact Story slots cover the handoff days and all September", () => {
@@ -28,7 +41,10 @@ test("Qyzylorda exact Story slots cover the handoff days and all September", () 
   assert.equal(evening.storyIndex, 4);
   assert.match(evening.asset, /^evening\//);
   assert.equal(STORY_SLOTS.size, 165);
-  assert.equal(localSlot(parseAt("2026-08-29T03:00:00Z")).key, "2026-08-29 08:00");
+  assert.equal(
+    localSlot(parseAt("2026-08-29T03:00:00Z")).key,
+    "2026-08-29 08:00",
+  );
 });
 
 test("Carousel wins only at its exact minute", () => {
@@ -52,7 +68,13 @@ test("All 26 approved Threads texts have exact unique slots and 13 RU + 13 KZ", 
     ids.push(exact.id);
     languages[exact.language] += 1;
   }
-  assert.deepEqual(ids.sort(), Array.from({ length: 26 }, (_, index) => `TH-${String(index + 5).padStart(2, "0")}`));
+  assert.deepEqual(
+    ids.sort(),
+    Array.from(
+      { length: 26 },
+      (_, index) => `TH-${String(index + 5).padStart(2, "0")}`,
+    ),
+  );
   assert.deepEqual(languages, { RU: 13, KZ: 13 });
 
   assert.equal(THREADS_SLOTS.get("2026-08-28 15:30").id, "TH-05");
@@ -61,8 +83,12 @@ test("All 26 approved Threads texts have exact unique slots and 13 RU + 13 KZ", 
 });
 
 test("Threads slots do not collide with Stories or carousels", () => {
-  const instagramSlots = new Set([...CAROUSEL_SLOTS.keys(), ...STORY_SLOTS.keys()]);
-  for (const slot of THREADS_SLOTS.keys()) assert.equal(instagramSlots.has(slot), false, slot);
+  const instagramSlots = new Set([
+    ...CAROUSEL_SLOTS.keys(),
+    ...STORY_SLOTS.keys(),
+  ]);
+  for (const slot of THREADS_SLOTS.keys())
+    assert.equal(instagramSlots.has(slot), false, slot);
 });
 
 test("Caption is extracted only from its automation section", () => {
@@ -81,6 +107,12 @@ test("Caption is extracted only from its automation section", () => {
     "",
     "3) THREADS. something",
   ].join("\n");
-  assert.equal(extractCarouselCaption(prompt, "24.08.2026 11:00"), "CAPTION ONE");
-  assert.equal(extractCarouselCaption(prompt, "31.08.2026 18:00"), "CAPTION FOUR");
+  assert.equal(
+    extractCarouselCaption(prompt, "24.08.2026 11:00"),
+    "CAPTION ONE",
+  );
+  assert.equal(
+    extractCarouselCaption(prompt, "31.08.2026 18:00"),
+    "CAPTION FOUR",
+  );
 });

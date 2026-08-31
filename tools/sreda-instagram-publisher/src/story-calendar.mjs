@@ -2,6 +2,16 @@ export const STORY_WINDOW_START = "2026-08-29";
 export const STORY_WINDOW_END = "2026-09-30";
 export const STORY_TIMES = ["08:00", "11:30", "14:30", "18:30", "21:00"];
 
+// The assets in this historical calendar were explicitly rejected for live use.
+// Changing a workflow switch or dispatching a slot must never make them publish.
+// A future release must replace the media/calendar and set this to APPROVED only
+// after the exact visual pack has explicit client approval.
+export const STORY_RELEASE_STATUS = "REJECTED_DO_NOT_PUBLISH";
+
+export function storyAutopublishApproved() {
+  return STORY_RELEASE_STATUS === "APPROVED";
+}
+
 const MORNING_ASSETS = [
   "morning/morning-benedict-turkey-v1.jpg",
   "morning/morning-chia-granola-v1.jpg",
@@ -80,7 +90,10 @@ function assetsForDay(dayIndex) {
 
 export const STORY_SLOTS = new Map();
 
-for (const [dayIndex, date] of datesInclusive(STORY_WINDOW_START, STORY_WINDOW_END).entries()) {
+for (const [dayIndex, date] of datesInclusive(
+  STORY_WINDOW_START,
+  STORY_WINDOW_END,
+).entries()) {
   const assets = assetsForDay(dayIndex);
 
   // The first production day starts with the two slots still ahead at handoff time.

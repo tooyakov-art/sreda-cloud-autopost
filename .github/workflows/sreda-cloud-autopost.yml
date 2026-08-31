@@ -10,18 +10,6 @@ on:
         type: choice
         options:
           - verify
-          - "08:00"
-          - "11:30"
-          - "14:30"
-          - "18:30"
-          - "21:00"
-  schedule:
-    # Start off-peak and prewarm 17 minutes before each Qyzylorda slot.
-    - cron: "43 2 * * *"
-    - cron: "13 6 * * *"
-    - cron: "13 9 * * *"
-    - cron: "13 13 * * *"
-    - cron: "43 15 * * *"
 
 concurrency:
   # Verify never blocks live work. Live runs serialize per logical slot, so a
@@ -53,19 +41,9 @@ jobs:
       - name: Install dependencies
         working-directory: tools/sreda-instagram-publisher
         run: npm ci
-      - name: Verify encrypted Story calendar and media
-        env:
-          SREDA_STORIES_ASSETS_PASSWORD: ${{ secrets.SREDA_STORIES_ASSETS_PASSWORD }}
-        run: |
-          mkdir -p current/stories-bank /tmp/sreda-content
-          openssl enc -d -aes-256-cbc -pbkdf2 \
-            -in content/stories-2026-08-29-to-2026-09-30.tar.gz.enc \
-            -out /tmp/sreda-content/stories.tar.gz \
-            -pass env:SREDA_STORIES_ASSETS_PASSWORD
-          tar -xzf /tmp/sreda-content/stories.tar.gz -C current/stories-bank
-          cd tools/sreda-instagram-publisher
-          SREDA_STORIES_ROOT="${{ github.workspace }}/current/stories-bank" \
-            node --test test/schedule-assets.test.mjs
+      - name: Verify publisher code while Stories are paused
+        working-directory: tools/sreda-instagram-publisher
+        run: npm test
       - name: Install cloudflared
         run: |
           mkdir -p .bin
@@ -82,10 +60,8 @@ jobs:
         run: node src/cloud-verify.mjs
 
   publish:
-    if: >-
-      github.run_attempt == 1 &&
-      (github.event_name == 'schedule' ||
-      (github.event_name == 'workflow_dispatch' && inputs.story_slot != 'verify'))
+    # Fail closed until a newly approved Story release replaces the rejected pack.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:

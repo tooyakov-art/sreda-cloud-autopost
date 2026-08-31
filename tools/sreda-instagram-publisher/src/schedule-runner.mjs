@@ -14,11 +14,16 @@ import {
   localSlot,
   parseAt,
   resolveScheduledAction,
+  storyAutopublishApproved,
   storyFileForAction,
   threadsAutopublishEnabled,
 } from "./schedule.mjs";
 import { clientFromEnv } from "./secrets.mjs";
-import { publicUrlForRoute, startStage, stopStage } from "./stage-controller.mjs";
+import {
+  publicUrlForRoute,
+  startStage,
+  stopStage,
+} from "./stage-controller.mjs";
 import { threadsClientFromEnv } from "./threads-secrets.mjs";
 import { publishThreadsTextIdempotent } from "./threads-publisher.mjs";
 
@@ -26,9 +31,15 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WORKSPACE = path.resolve(ROOT, "..", "..");
 const RUNTIME = path.join(ROOT, ".runtime");
 const LEDGER = path.join(RUNTIME, "publication-ledger.json");
-const STORIES_ROOT = process.env.SREDA_STORIES_ROOT || path.join(WORKSPACE, "output", "sreda-daily-stories");
-const CAROUSELS_ROOT = process.env.SREDA_CAROUSELS_ROOT || path.join(WORKSPACE, "output", "sreda-carousel-posts-august");
-const CLOUDFLARED = process.env.SREDA_CLOUDFLARED || "C:\\Users\\tuako\\.codex\\tools\\cloudflared\\cloudflared.exe";
+const STORIES_ROOT =
+  process.env.SREDA_STORIES_ROOT ||
+  path.join(WORKSPACE, "output", "sreda-daily-stories");
+const CAROUSELS_ROOT =
+  process.env.SREDA_CAROUSELS_ROOT ||
+  path.join(WORKSPACE, "output", "sreda-carousel-posts-august");
+const CLOUDFLARED =
+  process.env.SREDA_CLOUDFLARED ||
+  "C:\\Users\\tuako\\.codex\\tools\\cloudflared\\cloudflared.exe";
 
 function parseArgs(argv) {
   const options = {
@@ -44,34 +55,48 @@ function parseArgs(argv) {
       if (!argv[index + 1]) throw new Error("Нет значения для --at");
       options.at = argv[++index];
     } else if (argv[index] === "--scheduled-local-time") {
-      if (!argv[index + 1]) throw new Error("Нет значения для --scheduled-local-time");
+      if (!argv[index + 1])
+        throw new Error("Нет значения для --scheduled-local-time");
       options.scheduledLocalTime = argv[++index];
     } else if (argv[index] === "--story-phase") {
       if (!argv[index + 1]) throw new Error("Нет значения для --story-phase");
       options.storyPhase = argv[++index];
     } else if (argv[index] === "--reservation-id") {
-      if (!argv[index + 1]) throw new Error("Нет значения для --reservation-id");
+      if (!argv[index + 1])
+        throw new Error("Нет значения для --reservation-id");
       options.reservationId = argv[++index];
     } else throw new Error(`Неизвестный аргумент: ${argv[index]}`);
   }
   if (options.at && !options.dryRun) {
-    throw new Error("--at разрешён только вместе с --dry-run, чтобы исключить публикацию задним числом");
+    throw new Error(
+      "--at разрешён только вместе с --dry-run, чтобы исключить публикацию задним числом",
+    );
   }
   if (options.scheduledLocalTime) {
     if (process.env.GITHUB_ACTIONS !== "true") {
-      throw new Error("--scheduled-local-time разрешён только в GitHub Actions");
+      throw new Error(
+        "--scheduled-local-time разрешён только в GitHub Actions",
+      );
     }
     if (!/^\d{2}:\d{2}$/.test(options.scheduledLocalTime)) {
       throw new Error("--scheduled-local-time должен иметь формат HH:MM");
     }
   }
-  if (options.storyPhase && !["prepare", "reserve", "publish"].includes(options.storyPhase)) {
+  if (
+    options.storyPhase &&
+    !["prepare", "reserve", "publish"].includes(options.storyPhase)
+  ) {
     throw new Error("--story-phase должен быть prepare, reserve или publish");
   }
   if (options.storyPhase && !options.scheduledLocalTime) {
-    throw new Error("--story-phase разрешён только с --scheduled-local-time в GitHub Actions");
+    throw new Error(
+      "--story-phase разрешён только с --scheduled-local-time в GitHub Actions",
+    );
   }
-  if (["reserve", "publish"].includes(options.storyPhase) && !options.reservationId) {
+  if (
+    ["reserve", "publish"].includes(options.storyPhase) &&
+    !options.reservationId
+  ) {
     throw new Error("Для reserve/publish обязателен --reservation-id");
   }
   return options;
@@ -79,12 +104,16 @@ function parseArgs(argv) {
 
 async function writeGithubOutputs(values) {
   if (!process.env.GITHUB_OUTPUT) return;
-  const lines = Object.entries(values).map(([key, value]) => `${key}=${value}\n`).join("");
+  const lines = Object.entries(values)
+    .map(([key, value]) => `${key}=${value}\n`)
+    .join("");
   await appendFile(process.env.GITHUB_OUTPUT, lines, "utf8");
 }
 
 function storyDeadline(plan) {
-  return new Date(parseAt(plan.localSlot.replace(" ", "T")).getTime() + 15 * 60_000);
+  return new Date(
+    parseAt(plan.localSlot.replace(" ", "T")).getTime() + 15 * 60_000,
+  );
 }
 
 function describeStoryIdentity(action) {
@@ -139,32 +168,63 @@ async function run() {
   let action = resolveScheduledAction(now);
   if (!action && !options.at) {
     for (let minutesLate = 1; minutesLate <= 5 && !action; minutesLate += 1) {
-      action = resolveScheduledAction(new Date(now.getTime() - minutesLate * 60_000));
+      action = resolveScheduledAction(
+        new Date(now.getTime() - minutesLate * 60_000),
+      );
     }
   }
   if (!action) {
     if (options.dryRun) {
-      process.stdout.write(`${JSON.stringify({ ok: true, dryRun: true, noOp: true, reason: "outside-exact-slot" }, null, 2)}\n`);
+      process.stdout.write(
+        `${JSON.stringify({ ok: true, dryRun: true, noOp: true, reason: "outside-exact-slot" }, null, 2)}\n`,
+      );
     }
     return;
   }
 
-  if (action.kind === "threads-text" && !threadsAutopublishEnabled()) {
-    process.stdout.write(`${JSON.stringify({
+  if (action.kind === "story" && !storyAutopublishApproved()) {
+    const result = {
       ok: true,
       dryRun: options.dryRun,
       noOp: true,
-      kind: "threads-text",
+      kind: "story",
       localSlot: action.local.key,
-      reason: "threads-autopublish-disabled",
-    }, null, 2)}\n`);
+      reason: "story-release-rejected-do-not-publish",
+    };
+    if (options.dryRun) {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      return;
+    }
+    throw new Error(
+      `Story ${action.local.key} заблокирована: release имеет статус REJECTED_DO_NOT_PUBLISH`,
+    );
+  }
+
+  if (action.kind === "threads-text" && !threadsAutopublishEnabled()) {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          dryRun: options.dryRun,
+          noOp: true,
+          kind: "threads-text",
+          localSlot: action.local.key,
+          reason: "threads-autopublish-disabled",
+        },
+        null,
+        2,
+      )}\n`,
+    );
     return;
   }
 
   // После удалённого сохранения durable-брони выполняем только неизбежные
   // локальные чтения журнала/секретов, проверку срока и единственный POST.
   // Файлы и профиль Meta уже проверены до брони на prepare-фазе.
-  if (action.kind === "story" && ["reserve", "publish"].includes(options.storyPhase)) {
+  if (
+    action.kind === "story" &&
+    ["reserve", "publish"].includes(options.storyPhase)
+  ) {
     const story = describeStoryIdentity(action);
     const publishDeadline = storyDeadline(story);
     if (options.storyPhase === "reserve") {
@@ -174,13 +234,19 @@ async function run() {
         reservationId: options.reservationId,
         publishDeadline,
       });
-      process.stdout.write(`${JSON.stringify({
-        ok: true,
-        kind: "story",
-        phase: "reserve",
-        localSlot: story.localSlot,
-        ...result,
-      }, null, 2)}\n`);
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            ok: true,
+            kind: "story",
+            phase: "reserve",
+            localSlot: story.localSlot,
+            ...result,
+          },
+          null,
+          2,
+        )}\n`,
+      );
       return;
     }
 
@@ -192,44 +258,66 @@ async function run() {
       reservationId: options.reservationId,
       publishDeadline,
     });
-    process.stdout.write(`${JSON.stringify({
-      ok: true,
-      kind: "story",
-      phase: "publish",
-      localSlot: story.localSlot,
-      ...result,
-    }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          kind: "story",
+          phase: "publish",
+          localSlot: story.localSlot,
+          ...result,
+        },
+        null,
+        2,
+      )}\n`,
+    );
     return;
   }
 
   const plan = await describeAction(action);
   if (options.dryRun) {
-    process.stdout.write(`${JSON.stringify({
-      ok: true,
-      dryRun: true,
-      noOp: false,
-      ...plan,
-      ...(plan.caption ? { captionCharacters: plan.caption.length, caption: undefined } : {}),
-    }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          dryRun: true,
+          noOp: false,
+          ...plan,
+          ...(plan.caption
+            ? { captionCharacters: plan.caption.length, caption: undefined }
+            : {}),
+        },
+        null,
+        2,
+      )}\n`,
+    );
     return;
   }
 
   if (plan.kind === "threads-text") {
     const client = await threadsClientFromEnv();
-    const profile = await client.verifyProfile({ expectedUsername: process.env.SREDA_THREADS_USERNAME || "sreda.astana" });
+    const profile = await client.verifyProfile({
+      expectedUsername: process.env.SREDA_THREADS_USERNAME || "sreda.astana",
+    });
     const result = await publishThreadsTextIdempotent({
       client,
       ledgerFile: LEDGER,
       key: plan.idempotencyKey,
       text: plan.text,
     });
-    process.stdout.write(`${JSON.stringify({
-      ok: true,
-      kind: "threads-text",
-      localSlot: plan.localSlot,
-      username: profile.username,
-      ...result,
-    }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          kind: "threads-text",
+          localSlot: plan.localSlot,
+          username: profile.username,
+          ...result,
+        },
+        null,
+        2,
+      )}\n`,
+    );
     return;
   }
 
@@ -245,7 +333,10 @@ async function run() {
       await client.verifyProfile({
         expectedUsername: process.env.SREDA_IG_USERNAME || "sreda.astana",
       });
-      const stage = await startStage({ runtimeDir: RUNTIME, cloudflaredPath: CLOUDFLARED });
+      const stage = await startStage({
+        runtimeDir: RUNTIME,
+        cloudflaredPath: CLOUDFLARED,
+      });
       shouldStopStoryStage = !stage.reused;
       const [item] = await stageFiles([plan.file]);
       const result = await prepareStoryIdempotent({
@@ -257,14 +348,20 @@ async function run() {
         publishDeadline,
       });
       await writeGithubOutputs({ needs_publish: result.needsPublish === true });
-      process.stdout.write(`${JSON.stringify({
-        ok: true,
-        kind: "story",
-        phase: "prepare",
-        localSlot: plan.localSlot,
-        file: plan.file,
-        ...result,
-      }, null, 2)}\n`);
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            ok: true,
+            kind: "story",
+            phase: "prepare",
+            localSlot: plan.localSlot,
+            file: plan.file,
+            ...result,
+          },
+          null,
+          2,
+        )}\n`,
+      );
       return;
     } finally {
       if (shouldStopStoryStage) await stopStage(RUNTIME);
@@ -277,7 +374,10 @@ async function run() {
     await client.verifyProfile({
       expectedUsername: process.env.SREDA_IG_USERNAME || "sreda.astana",
     });
-    const stage = await startStage({ runtimeDir: RUNTIME, cloudflaredPath: CLOUDFLARED });
+    const stage = await startStage({
+      runtimeDir: RUNTIME,
+      cloudflaredPath: CLOUDFLARED,
+    });
     shouldStopStage = !stage.reused;
     const items = await stageFiles(plan.files);
     const result = await publishCarouselIdempotent({
@@ -288,14 +388,18 @@ async function run() {
       inputIdentity: items.map(({ identity }) => identity),
       caption: plan.caption,
     });
-    process.stdout.write(`${JSON.stringify({ ok: true, kind: "carousel", localSlot: plan.localSlot, files: plan.files, ...result }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ ok: true, kind: "carousel", localSlot: plan.localSlot, files: plan.files, ...result }, null, 2)}\n`,
+    );
   } finally {
     if (shouldStopStage) await stopStage(RUNTIME);
   }
 }
 
 run().catch((error) => {
-  process.stderr.write(`${JSON.stringify({ ok: false, error: error.message, name: error.name })}\n`);
+  process.stderr.write(
+    `${JSON.stringify({ ok: false, error: error.message, name: error.name })}\n`,
+  );
   appendFile(
     path.join(RUNTIME, "scheduler-errors.log"),
     `${new Date().toISOString()} ${error.name}: ${error.message}\n`,
