@@ -14,7 +14,8 @@ import {
 import { threadsClientFromEnv } from "./threads-secrets.mjs";
 import { publishThreadsPostIdempotent } from "./threads-media-publisher.mjs";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ENTRY_FILE = fileURLToPath(import.meta.url);
+const ROOT = path.resolve(path.dirname(ENTRY_FILE), "..");
 const RUNTIME = path.join(ROOT, ".runtime-threads");
 const LEDGER = path.join(RUNTIME, "publication-ledger.json");
 
@@ -49,7 +50,44 @@ function print(value) {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
-async function main() {
+function assetRefsForPost(post) {
+  const hasSingle = post.asset !== null && post.asset !== undefined;
+  const hasCarousel = post.assets !== null && post.assets !== undefined;
+  if (hasSingle && hasCarousel) {
+    throw new Error(`${post.id}: задайте asset либо assets, но не оба поля`);
+  }
+  if (hasCarousel) {
+    if (!Array.isArray(post.assets) || post.assets.length < 2 || post.assets.length > 20) {
+      throw new Error(`${post.id}: assets должен содержать от 2 до 20 изображений`);
+    }
+    return post.assets;
+  }
+  return hasSingle ? [post.asset] : [];
+}
+
+export async function resolvePostAssetFiles(post, threadsRootValue = process.env.SREDA_THREADS_ROOT) {
+  const refs = assetRefsForPost(post);
+  if (refs.length === 0) return [];
+  if (!threadsRootValue) throw new Error("Для медиапоста задайте SREDA_THREADS_ROOT");
+  const threadsRoot = path.resolve(threadsRootValue);
+  const files = [];
+  for (let index = 0; index < refs.length; index += 1) {
+    const ref = refs[index];
+    if (typeof ref !== "string" || !ref.trim()) {
+      throw new Error(`${post.id}: asset ${index + 1} не должен быть пустым`);
+    }
+    const file = path.resolve(threadsRoot, ref);
+    const relative = path.relative(threadsRoot, file);
+    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      throw new Error(`${post.id}: asset вышел за SREDA_THREADS_ROOT`);
+    }
+    await access(file);
+    files.push(file);
+  }
+  return files;
+}
+
+export async function main() {
   const options = parseArgs(process.argv.slice(2));
   const validation = validateThreadsSeptemberCalendar();
   if (!validation.ok) throw new Error(`Некорректный календарь: ${validation.errors.join("; ")}`);
@@ -65,14 +103,7 @@ async function main() {
     throw new Error(`${post.id}: ожидалось время ${post.time}, получено ${options["scheduled-local-time"]}`);
   }
 
-  const threadsRoot = path.resolve(process.env.SREDA_THREADS_ROOT || "");
-  let assetFile = null;
-  if (post.asset) {
-    if (!process.env.SREDA_THREADS_ROOT) throw new Error("Для медиапоста задайте SREDA_THREADS_ROOT");
-    assetFile = path.resolve(threadsRoot, post.asset);
-    if (!assetFile.startsWith(`${threadsRoot}${path.sep}`)) throw new Error(`${post.id}: asset вышел за SREDA_THREADS_ROOT`);
-    await access(assetFile);
-  }
+  const assetFiles = await resolvePostAssetFiles(post);
 
   const key = `sreda-${post.id.toLowerCase()}`;
   if (options["dry-run"]) {
@@ -86,7 +117,9 @@ async function main() {
       language: post.language,
       format: post.format,
       textCharacters: post.text.length,
-      assetFile,
+      assetFile: assetFiles.length === 1 ? assetFiles[0] : null,
+      assetFiles,
+      mediaCount: assetFiles.length,
       idempotencyKey: key,
     });
     return;
@@ -99,15 +132,30 @@ async function main() {
   let stageStarted = false;
   try {
     let imageUrl = null;
+    let imageUrls = null;
     let inputIdentity = null;
-    if (assetFile) {
+    if (assetFiles.length > 0) {
       const cloudflaredPath = process.env.SREDA_CLOUDFLARED;
       if (!cloudflaredPath) throw new Error("Для медиапоста задайте SREDA_CLOUDFLARED");
-      const staged = await stageMediaFile(assetFile, RUNTIME);
+      // stageMediaFile обновляет общий manifest, поэтому файлы готовим
+      // последовательно, сохраняя порядок слайдов.
+      const stagedMedia = [];
+      for (const assetFile of assetFiles) {
+        stagedMedia.push(await stageMediaFile(assetFile, RUNTIME));
+      }
       await startStage({ runtimeDir: RUNTIME, cloudflaredPath });
       stageStarted = true;
-      imageUrl = await publicUrlForRoute(RUNTIME, staged.route);
-      inputIdentity = staged.sourceHash;
+      const publicUrls = [];
+      for (const staged of stagedMedia) {
+        publicUrls.push(await publicUrlForRoute(RUNTIME, staged.route));
+      }
+      if (publicUrls.length === 1) {
+        [imageUrl] = publicUrls;
+        inputIdentity = stagedMedia[0].sourceHash;
+      } else {
+        imageUrls = publicUrls;
+        inputIdentity = stagedMedia.map((item) => item.sourceHash);
+      }
     }
 
     const client = await threadsClientFromEnv();
@@ -120,6 +168,7 @@ async function main() {
       key,
       text: post.text,
       imageUrl,
+      imageUrls,
       inputIdentity,
     });
     print({
@@ -136,7 +185,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  process.stderr.write(`${JSON.stringify({ ok: false, error: error.message, name: error.name })}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === ENTRY_FILE) {
+  main().catch((error) => {
+    process.stderr.write(`${JSON.stringify({ ok: false, error: error.message, name: error.name })}\n`);
+    process.exitCode = 1;
+  });
+}

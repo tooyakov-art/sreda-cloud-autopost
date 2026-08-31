@@ -110,7 +110,7 @@ jobs:
             echo "args=--scheduled-local-time 15:30" >> "$GITHUB_OUTPUT"
           else
             post_id="$INPUT_POST_ID"
-            if [[ ! "$post_id" =~ ^TH-(LAUNCH-01|SEP-(0[1-9]|[12][0-9]|30))$ ]]; then
+            if [[ ! "$post_id" =~ ^TH-(LAUNCH-01|TRIAL-01|SEP-(0[1-9]|[12][0-9]|30))$ ]]; then
               echo "Invalid post_id: $post_id" >&2
               exit 2
             fi

@@ -164,3 +164,58 @@ test("Threads creates IMAGE container with HTTPS media and lists recent posts", 
   assert.equal(calls[2].parsed.searchParams.get("limit"), "50");
   await assert.rejects(() => client.createImageContainer({ imageUrl: "http://unsafe.example/post.jpg", text: "No" }), /HTTPS/);
 });
+
+test("Threads creates ordered IMAGE children and a CAROUSEL parent", async () => {
+  const calls = [];
+  let nextId = 100;
+  const client = new ThreadsClient({
+    accessToken: "threads-test-secret",
+    fetchImpl: async (url, options = {}) => {
+      const parsed = new URL(url);
+      const body = options.body ? Object.fromEntries(options.body.entries()) : {};
+      calls.push({ parsed, method: options.method || "GET", body });
+      if ((options.method || "GET") === "GET") {
+        return response({ id: "777", username: "sreda.astana" });
+      }
+      return response({ id: String(nextId++) });
+    },
+  });
+  await client.verifyProfile();
+  const first = await client.createImageCarouselItemContainer({
+    imageUrl: "https://media.example/first.jpg",
+    altText: "Первый слайд",
+  });
+  const second = await client.createImageCarouselItemContainer({
+    imageUrl: "https://media.example/second.jpg",
+  });
+  const carousel = await client.createCarouselContainer({
+    childIds: [first, second],
+    text: "Carousel text",
+  });
+
+  assert.equal(carousel, "102");
+  assert.deepEqual(calls[1].body, {
+    media_type: "IMAGE",
+    image_url: "https://media.example/first.jpg",
+    is_carousel_item: "true",
+    alt_text: "Первый слайд",
+  });
+  assert.deepEqual(calls[2].body, {
+    media_type: "IMAGE",
+    image_url: "https://media.example/second.jpg",
+    is_carousel_item: "true",
+  });
+  assert.deepEqual(calls[3].body, {
+    media_type: "CAROUSEL",
+    children: "100,101",
+    text: "Carousel text",
+  });
+  await assert.rejects(
+    () => client.createCarouselContainer({ childIds: ["100"], text: "Too short" }),
+    /от 2 до 20/,
+  );
+  await assert.rejects(
+    () => client.createImageCarouselItemContainer({ imageUrl: "http://unsafe.example/slide.jpg" }),
+    /HTTPS/,
+  );
+});

@@ -14,7 +14,7 @@ async function main() {
   if (!validation.ok) throw new Error(validation.errors.join("; "));
   if (!process.env.SREDA_THREADS_ROOT) throw new Error("Задайте SREDA_THREADS_ROOT");
   const root = path.resolve(process.env.SREDA_THREADS_ROOT);
-  const assets = [...new Set(listAllThreadsPosts().map((item) => item.asset).filter(Boolean))];
+  const assets = [...new Set(listAllThreadsPosts().flatMap((item) => item.assets || (item.asset ? [item.asset] : [])))];
   const checked = [];
   for (const relative of assets) {
     const file = path.resolve(root, relative);

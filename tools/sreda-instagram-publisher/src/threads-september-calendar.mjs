@@ -38,6 +38,24 @@ export const THREADS_LAUNCH_POST = Object.freeze({
   asset: "photos/03-belgian-waffles.jpeg",
 });
 
+export const THREADS_TRIAL_POST = Object.freeze({
+  id: "TH-TRIAL-01",
+  date: "2026-08-31",
+  time: "manual",
+  language: "RU",
+  format: "CAROUSEL",
+  topic: "SREDA на весь день",
+  text: caption(
+    "RU",
+    "SREDA на весь день: яйца Бенедикт для неспешного утра, стейк лосося к обеду и казаречче для тёплого вечера 🤍\n\nЛистайте карусель и заглядывайте в удобное время — будем рады видеть вас.",
+  ),
+  assets: Object.freeze([
+    "design/trial-01-morning.png",
+    "design/trial-01-lunch.png",
+    "design/trial-01-evening.png",
+  ]),
+});
+
 export const SEPTEMBER_THREADS_POSTS = Object.freeze([
   post(1, "KZ", "PHOTO", "Бельгиялық вафли",
     "Қыркүйекті асықпай бастайық: бельгиялық вафли, сүйікті кофе және өзіңізге арналған тыныш уақыт 🤍\n\nSREDA-да кездескенше.",
@@ -121,7 +139,7 @@ export const SEPTEMBER_THREADS_POSTS = Object.freeze([
     "design/08-mark-black-on-white.png"),
 ]);
 
-const ALL_POSTS = Object.freeze([THREADS_LAUNCH_POST, ...SEPTEMBER_THREADS_POSTS]);
+const ALL_POSTS = Object.freeze([THREADS_LAUNCH_POST, THREADS_TRIAL_POST, ...SEPTEMBER_THREADS_POSTS]);
 
 export function getThreadsPostById(id) {
   return ALL_POSTS.find((item) => item.id === id) ?? null;

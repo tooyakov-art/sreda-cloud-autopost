@@ -5,6 +5,7 @@ import {
   getThreadsPostById,
   SEPTEMBER_THREADS_POSTS,
   THREADS_LAUNCH_POST,
+  THREADS_TRIAL_POST,
   validateThreadsSeptemberCalendar,
 } from "../src/threads-september-calendar.mjs";
 
@@ -21,7 +22,7 @@ test("September Threads calendar contains exactly 30 safe approved-style posts",
 });
 
 test("Threads content follows Yasmin requirements", () => {
-  for (const post of [THREADS_LAUNCH_POST, ...SEPTEMBER_THREADS_POSTS]) {
+  for (const post of [THREADS_LAUNCH_POST, THREADS_TRIAL_POST, ...SEPTEMBER_THREADS_POSTS]) {
     assert.ok(post.text.includes("+7 706 600 83 82"), post.id);
     assert.ok(post.text.includes("26/1"), post.id);
     assert.equal(post.text.includes("#"), false, `${post.id}: hashtags`);
@@ -30,5 +31,8 @@ test("Threads content follows Yasmin requirements", () => {
     assert.ok(post.text.length <= 500, `${post.id}: too long`);
   }
   assert.equal(getThreadsPostById("TH-LAUNCH-01"), THREADS_LAUNCH_POST);
+  assert.equal(getThreadsPostById("TH-TRIAL-01"), THREADS_TRIAL_POST);
+  assert.equal(THREADS_TRIAL_POST.assets.length, 3);
+  assert.equal(THREADS_TRIAL_POST.format, "CAROUSEL");
   assert.match(THREADS_LAUNCH_POST.text, /Иногда для хорошего дня достаточно бельгийских вафель/);
 });

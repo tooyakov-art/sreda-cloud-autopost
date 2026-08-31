@@ -67,6 +67,13 @@ function assertUserId(value) {
   return String(value);
 }
 
+function assertCarouselChildIds(values) {
+  if (!Array.isArray(values) || values.length < 2 || values.length > 20) {
+    throw new TypeError("Threads-карусель должна содержать от 2 до 20 изображений");
+  }
+  return values.map((value) => assertUserId(value));
+}
+
 export class ThreadsClient {
   constructor({
     accessToken,
@@ -183,6 +190,43 @@ export class ThreadsClient {
       retry: true,
     });
     if (!result.id) throw new ThreadsApiError("Threads не вернул ID контейнера изображения");
+    return String(result.id);
+  }
+
+  async createImageCarouselItemContainer({ imageUrl, altText } = {}) {
+    const id = await this.userId();
+    const body = {
+      media_type: "IMAGE",
+      image_url: assertHttpsUrl(imageUrl, "Threads carousel image_url"),
+      is_carousel_item: "true",
+    };
+    if (altText !== undefined && altText !== null) {
+      const normalizedAltText = String(altText).trim();
+      if (!normalizedAltText) throw new TypeError("Threads alt_text не должен быть пустым");
+      body.alt_text = normalizedAltText;
+    }
+    const result = await this.request(`${id}/threads`, {
+      method: "POST",
+      body,
+      retry: true,
+    });
+    if (!result.id) throw new ThreadsApiError("Threads не вернул ID элемента карусели");
+    return String(result.id);
+  }
+
+  async createCarouselContainer({ childIds, text }) {
+    const id = await this.userId();
+    const children = assertCarouselChildIds(childIds);
+    const result = await this.request(`${id}/threads`, {
+      method: "POST",
+      body: {
+        media_type: "CAROUSEL",
+        children: children.join(","),
+        text: assertText(text),
+      },
+      retry: true,
+    });
+    if (!result.id) throw new ThreadsApiError("Threads не вернул ID контейнера карусели");
     return String(result.id);
   }
 
