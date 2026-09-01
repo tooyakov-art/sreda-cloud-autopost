@@ -50,4 +50,7 @@ test("September Threads use varied photographer media without repeated files", (
   assert.equal(SEPTEMBER_THREADS_POSTS.some((post) => post.format === "TEXT"), false);
   assert.equal(SEPTEMBER_THREADS_POSTS.filter((post) => post.format === "CAROUSEL").length, 10);
   assert.ok(refs.filter((ref) => ref.startsWith("photographer/")).length >= 38);
+  assert.equal(refs.filter((ref) => ref.startsWith("photographer/aug14-live/")).length, 11);
+  assert.equal(refs.filter((ref) => ref.startsWith("photographer/sreda2-selected/")).length, 8);
+  assert.equal(refs.some((ref) => ref.startsWith("photographer/opening/")), false);
 });
