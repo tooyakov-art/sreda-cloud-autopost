@@ -10,8 +10,11 @@ function caption(language, body) {
   return `${String(body).trim()}\n\n${footer}`;
 }
 
-function post(day, language, format, topic, body, asset = null) {
+function post(day, language, format, topic, body, media) {
   const date = `2026-09-${String(day).padStart(2, "0")}`;
+  const mediaFields = Array.isArray(media)
+    ? { assets: Object.freeze([...media]) }
+    : { asset: media };
   return Object.freeze({
     id: `TH-SEP-${String(day).padStart(2, "0")}`,
     date,
@@ -20,7 +23,7 @@ function post(day, language, format, topic, body, asset = null) {
     format,
     topic,
     text: caption(language, body),
-    asset,
+    ...mediaFields,
   });
 }
 
@@ -57,86 +60,96 @@ export const THREADS_TRIAL_POST = Object.freeze({
 });
 
 export const SEPTEMBER_THREADS_POSTS = Object.freeze([
-  post(1, "KZ", "PHOTO", "Бельгиялық вафли",
-    "Қыркүйекті асықпай бастайық: бельгиялық вафли, сүйікті кофе және өзіңізге арналған тыныш уақыт 🤍\n\nSREDA-да кездескенше.",
-    "photos/03-belgian-waffles.jpeg"),
-  post(2, "RU", "TEXT", "Небольшая пауза",
-    "В SREDA можно зайти на полчаса и случайно остаться дольше. Любимый кофе, спокойный стол и пауза, которую не хочется торопить 🤍"),
-  post(3, "KZ", "DESIGN", "Таңғы ырғақ",
-    "Таңды асықпай бастауға болады. SREDA-да сүйікті кофеңізге және өз ырғағыңызға әрдайым орын бар 🤍",
-    "design/01-wordmark-ivory-on-garnet.png"),
-  post(4, "RU", "PHOTO", "Французский омлет",
-    "Французский омлет со страчателлой и креветками — завтрак, ради которого приятно начать день чуть медленнее. Ждём вас в SREDA 🤍",
-    "photos/01-french-omelette.jpeg"),
-  post(5, "KZ", "PHOTO", "Телятина қосылған салат",
-    "Түскі асқа жеңіл әрі тойымды нұсқа: телятина және зімбірлі тұздығы бар салат. SREDA-да асықпай демалуға уақыт табыңыз 🤍",
-    "photos/02-veal-salad.jpeg"),
-  post(6, "RU", "TEXT", "Выходной завтрак",
-    "Выходной создан для завтрака без спешки. Выберите любимое блюдо, добавьте кофе и оставьте остальной день без строгого расписания 🤍"),
-  post(7, "KZ", "PHOTO", "Бенедикт с индейкой",
-    "Жексенбілік таңға Бенедикт с индейкой және сүйікті кофе жарасады. Күнді өз ырғағыңызбен бастаңыз 🤍",
-    "photos/05-benedict-turkey.jpeg"),
-  post(8, "RU", "PHOTO", "Стейк из семги",
-    "Стейк из семги с соусом голандез — спокойный план на ужин. Заходите вечером, будем рады накрыть для вас стол 🤍",
-    "photos/04-salmon-steak.jpeg"),
-  post(9, "KZ", "TEXT", "Кездесуге арналған орын",
-    "Кейбір кездесулерге ерекше жоспар керек емес. Бір үстел, екі кофе және асықпай сөйлесуге уақыт болса жеткілікті. SREDA-да кездескенше 🤍"),
-  post(10, "RU", "DESIGN", "Своя SREDA",
-    "У каждого бывает место, куда хочется возвращаться без особого повода. Пусть в SREDA у вас появится свой стол и любимый вкус 🤍",
-    "design/02-mark-ivory-on-garnet.png"),
-  post(11, "KZ", "TEXT", "Дәннің дәмі неден құралады",
-    "Кофе дәміне дәннің шыққан жері, өңдеу тәсілі және қуыру деңгейі әсер етеді. Баристаға қандай дәм ұнайтынын айтсаңыз, таңдауға көмектесеміз."),
-  post(12, "RU", "TEXT", "Люди SREDA",
-    "Место начинается с людей. В SREDA каждый день встречают, готовят, подсказывают и замечают детали — так появляется ощущение, что вам здесь рады 🤍"),
-  post(13, "KZ", "TEXT", "Қонақжайлық",
-    "SREDA-ға алғаш рет келсеңіз, өзіңізге не ұнайтынын айтыңыз. Команда сусын мен тағам таңдауға қуана көмектеседі."),
-  post(14, "RU", "PHOTO", "Казарече с креветками",
-    "Казарече с креветками и страчателлой — тот случай, когда обед можно сделать главным приятным событием дня 🤍",
-    "photos/06-casarecce.jpeg"),
-  post(15, "KZ", "DESIGN", "Ай ортасындағы үзіліс",
-    "Ай ортасында өзіңізге шағын үзіліс қалдырыңыз. Кофе, тыныш кеңістік және асықпай демалуға уақыт — бәрі SREDA-да 🤍",
-    "design/03-wordmark-garnet-on-ivory.png"),
-  post(16, "RU", "PHOTO", "Бельгийские вафли",
-    "Бельгийские вафли, кофе и утро без спешки — простой план, который легко повторить. Будем ждать вас в SREDA 🤍",
-    "photos/03-belgian-waffles.jpeg"),
-  post(17, "KZ", "DESIGN", "SREDA командасы",
-    "SREDA-ны күн сайын адамдар жасайды. Әр кесенің, әр тағамның және жылы қарсы алудың артында біздің команда тұр 🤍",
-    "design/04-mark-garnet-on-ivory.png"),
-  post(18, "RU", "TEXT", "Как раскрывается зерно",
-    "Вкус кофе складывается из происхождения зерна, способа обработки и обжарки. Не нужно учить термины: расскажите бариста, какие вкусы вам нравятся, — поможем выбрать."),
-  post(19, "KZ", "PHOTO", "Түскі ас",
-    "Күн ортасындағы үзіліске телятина және зімбірлі тұздығы бар салатты таңдауға болады. Нақты тағам, тыныш үстел және асықпайтын сәт 🤍",
-    "photos/02-veal-salad.jpeg"),
-  post(20, "RU", "PHOTO", "Ужин без спешки",
-    "Иногда хороший вечер — это тёплый свет, спокойный разговор и стейк из семги с соусом голандез. До встречи в SREDA 🤍",
-    "photos/04-salmon-steak.jpeg"),
-  post(21, "KZ", "DESIGN", "Кешкі SREDA",
-    "Кешке SREDA басқаша сезіледі: жылы жарық, тыныш әуен және аяқтағыңыз келмейтін әңгімелер. Сізді қуана күтеміз 🤍",
-    "design/05-wordmark-ivory-on-black.png"),
-  post(22, "RU", "PHOTO", "Завтрак в будний день",
-    "Будний день тоже можно начать красиво: французский омлет со страчателлой и креветками, кофе и немного времени для себя 🤍",
-    "photos/01-french-omelette.jpeg"),
-  post(23, "KZ", "DESIGN", "Көңіл күйге арналған орын",
-    "Жұмыс, кездесу немесе жай ғана тыныш үзіліс — SREDA-да әр күнге өз көңіл күйіңізді табуға болады 🤍",
-    "design/06-mark-ivory-on-black.png"),
-  post(24, "RU", "TEXT", "За кадром кухни",
-    "За каждой подачей — работа кухни, которую гость обычно не видит. Нам нравится делать её спокойно, внимательно и без лишней суеты."),
-  post(25, "KZ", "TEXT", "Өз орның",
-    "Кейбір орындарға бір рет келесіз, ал кейбіріне қайта оралғыңыз келеді. SREDA-да өз үстеліңіз бен сүйікті дәміңіз табылсын 🤍"),
-  post(26, "RU", "PHOTO", "Казарече",
-    "Казарече с креветками и страчателлой — хороший повод устроить себе обед без спешки. Заходите, будем рады вас видеть 🤍",
-    "photos/06-casarecce.jpeg"),
-  post(27, "KZ", "PHOTO", "Жексенбілік таңғы ас",
-    "Жексенбілік таңғы ас асықпай өтуі керек. Бенедикт с индейкой, классикалық кофе және күнді өз ырғағыңызбен бастау 🤍",
-    "photos/05-benedict-turkey.jpeg"),
-  post(28, "RU", "TEXT", "Пространство для людей",
-    "SREDA становится живой благодаря людям. Спасибо, что приходите на кофе, встречи, завтраки и долгие разговоры 🤍"),
-  post(29, "KZ", "DESIGN", "Қыркүйектің сәттері",
-    "Қыркүйек бізге жылы кездесулер, таныс жүздер және жаңа сүйікті сәттер сыйлады. Осы айды бізбен бірге өткізгеніңізге рақмет 🤍",
-    "design/07-wordmark-black-on-white.png"),
-  post(30, "RU", "DESIGN", "Спасибо за сентябрь",
-    "Спасибо за сентябрь в SREDA — за первые визиты, знакомые лица и добрые слова для команды. Будем рады видеть вас снова 🤍",
-    "design/08-mark-black-on-white.png"),
+  post(1, "RU", "CAROUSEL", "Кофе начинается раньше чашки",
+    "До первой чашки у кофе уже есть история: зерно взвешивают, заваривают, пробуют и обсуждают. Показываем один живой эпизод SREDA без постановки 🤍",
+    ["live/sep-01-coffee-before-cup-cover.png", "photographer/cupping/DSC08163_resized.jpg", "photographer/cupping/DSC08326_resized.jpg"]),
+  post(2, "KZ", "AIR", "Ақ шыныаяқ пен тыныштық",
+    "Кейде жақсы кадрға көп нәрсе қажет емес: ақ шыныаяқ, кофе және асықпайтын бірнеше минут. SREDA-дағы кішкентай үзіліс 🤍",
+    "photographer/cupping/DSC08138_resized.jpg"),
+  post(3, "RU", "LIVE", "Разговор у бара",
+    "SREDA живёт не только подачами. Иногда главный момент — короткий разговор у бара, точная рекомендация и улыбка перед первым глотком 🤍",
+    "photographer/opening/source-06.jpg"),
+  post(4, "RU", "CAROUSEL", "У кофе есть свой ритм",
+    "Каппинг в SREDA звучал не только ложками о чашки. Музыка собрала пространство, а кофе дал повод задержаться и познакомиться. Один вечер — три живых кадра.",
+    ["live/sep-04-coffee-rhythm-cover.png", "photographer/cupping/DSC08038_resized.jpg", "photographer/cupping/DSC08046_resized.jpg"]),
+  post(5, "KZ", "FOOD", "Құлпынайлы матча",
+    "Құлпынайлы матча — қыркүйекке аздап түс пен жұмсақ дәм қосатын сусын. Жай ғана әдемі үзіліс 🤍",
+    "food/matcha-strawberry.jpeg"),
+  post(6, "RU", "LIVE", "Свой темп",
+    "Нам нравятся моменты, в которых ничего не нужно придумывать: человек занял свой стол, напиток уже рядом, день идёт своим темпом. Так выглядит живая SREDA 🤍",
+    "photographer/opening/source-01.jpg"),
+  post(7, "KZ", "AIR", "Қол мен шәйнек",
+    "Қол, шәйнек, шыныаяқ. Артық сөзсіз-ақ кофе дайындаудың өз ырғағы бар.",
+    "photographer/cupping/DSC08259_resized.jpg"),
+  post(8, "RU", "CAROUSEL", "Люди создают место",
+    "До того как напиток оказывается на столе, команда успевает подготовить бар, настроить оборудование и проверить десятки деталей. Люди действительно создают место 🤍",
+    ["live/sep-08-people-create-place-cover.png", "photographer/cupping/DSC08056_resized.jpg", "photographer/cupping/DSC08110_resized.jpg"]),
+  post(9, "RU", "DESIGN", "Серьёзно о кофе",
+    "Мы серьёзно относимся к кофе, но в течение смены обязательно находится место для такой улыбки. Именно из таких кадров и складывается живая SREDA.",
+    "live/sep-09-serious-coffee-cover.png"),
+  post(10, "KZ", "FOOD", "Күркетауық еті қосылған Бенедикт",
+    "Күркетауық еті қосылған Бенедикт — асықпай басталатын таңға арналған жылы таңғы ас 🤍",
+    "food/breakfast-benedict-turkey.jpeg"),
+  post(11, "RU", "CAROUSEL", "Вкус, которым делятся",
+    "Хороший кофе становится понятнее, когда им делятся: показывают зерно, сравнивают чашки и спокойно говорят о вкусе. Здесь интерес важнее сложных терминов.",
+    ["live/sep-11-shared-taste-cover.png", "photographer/cupping/DSC08209_resized.jpg", "photographer/cupping/DSC08318_resized.jpg"]),
+  post(12, "KZ", "AIR", "Үстелдегі тыныштық",
+    "Кейде лентаға тыныс керек. Үстелдегі мәзір, бір стақан және келесі кездесуге дейінгі тыныштық.",
+    "photographer/opening/source-22.jpg"),
+  post(13, "RU", "LIVE", "Разговор за столом",
+    "В SREDA разговор легко начинается за столом: кто-то пробует блюдо, кто-то слушает, кто-то делится историей. Живые встречи выглядят именно так 🤍",
+    "photographer/opening/source-27.jpg"),
+  post(14, "KZ", "FOOD", "Цитрусты матча-тоник",
+    "Цитрусты матча-тоник — матча дәмі мен сергітетін цитрустың жеңіл кездесуі.",
+    "food/matcha-tonic-citrus.jpeg"),
+  post(15, "RU", "CAROUSEL", "Точность до первого глотка",
+    "В каппинге всё держится на внимании: одинаковая вода, точное время и честная реакция на вкус. Спокойная работа, которую обычно не видно за готовой чашкой.",
+    ["live/sep-15-precision-cover.png", "photographer/cupping/DSC08192_resized.jpg", "photographer/cupping/DSC08289_resized.jpg"]),
+  post(16, "KZ", "AIR", "Жарық пен көзқарас",
+    "Кейде кадрға әрекет қажет емес. Жарық, көзқарас және кофехананың өз ырғағы жеткілікті.",
+    "photographer/cupping/DSC08054_resized.jpg"),
+  post(17, "RU", "LIVE", "Работа за баром",
+    "За баром всегда происходит чуть больше, чем видит гость: смешать, проверить, поправить и только потом отдать напиток. Любим такие рабочие кадры.",
+    "photographer/cupping/DSC08117_resized.jpg"),
+  post(18, "KZ", "FOOD", "Француз омлеті",
+    "Страчателла мен асшаян қосылған француз омлеті — күнді асықпай бастауға арналған жұмсақ дәм.",
+    "food/breakfast-french-omelette.jpeg"),
+  post(19, "KZ", "CAROUSEL", "Бір ауысымның тарихы",
+    "SREDA-ның күнделікті ырғағы командадан басталады: барды дайындау, тапсырысты жинау, бір-біріне көмектесу. Үш кадр — бір ауысымның шағын тарихы 🤍",
+    ["photographer/cupping/DSC08099.jpg", "photographer/cupping/DSC08071.jpg", "photographer/cupping/DSC08156_resized.jpg"]),
+  post(20, "KZ", "AIR", "Музыка басталған сәт",
+    "Музыка басталған сәт. Кадрда тек адам мен пульт, бірақ сол кештің көңіл күйі түгел сезіледі.",
+    "photographer/cupping/DSC08031_resized.jpg"),
+  post(21, "RU", "LIVE", "Знакомый стол",
+    "Иногда лучший сюжет уже случается сам: знакомый стол, любимый заказ и несколько спокойных минут без спешки 🤍",
+    "photographer/opening/source-09.jpg"),
+  post(22, "RU", "CAROUSEL", "Одно зерно — много оттенков",
+    "Одно зерно может звучать по-разному. Поэтому на каппинге рядом стоят чашки, карточки и заметки — вкус ищут вниманием, а не громкими словами.",
+    ["live/sep-22-one-bean-cover.png", "photographer/cupping/DSC08104_resized.jpg", "photographer/cupping/DSC08141_resized.jpg"]),
+  post(23, "KZ", "FOOD", "Монблан SREDA",
+    "Монблан SREDA — кофе дәмі мен жұмсақ текстурасы бар әдемі үзіліс. Күннің ортасына дәл келеді 🤍",
+    "food/coffee-mon-blanc.jpeg"),
+  post(24, "KZ", "CAROUSEL", "Әңгімеден дәмге дейін",
+    "Кофе жайлы әңгіме бір сәтте ортақ тәжірибеге айналады: алдымен тыңдаймыз, кейін салыстырамыз, соңында өз дәмімізді табамыз.",
+    ["photographer/cupping/DSC08241_resized.jpg", "photographer/cupping/DSC08270_resized.jpg", "photographer/cupping/DSC08322_resized.jpg"]),
+  post(25, "RU", "LIVE", "Портрет у бара",
+    "Один из тех портретов, где кафе видно без общего плана: свет витрины, красные детали и человек внутри своего момента.",
+    "photographer/cupping/DSC08087.jpg"),
+  post(26, "KZ", "FOOD", "Албырт стейкі",
+    "Голландез тұздығы қосылған албырт стейкі — күн ортасындағы нақты әрі дәмді жоспар.",
+    "food/dinner-salmon-steak.jpeg"),
+  post(27, "KZ", "AIR", "Қимылдың анықтығы",
+    "Түссіз кадрда қимыл анық көрінеді: қол, шәйнек және жұмысқа толық назар.",
+    "photographer/cupping/DSC08147.jpg"),
+  post(28, "RU", "CAROUSEL", "Место становится живым",
+    "Место становится живым, когда команда разговаривает, смеётся и замечает людей вокруг. Собрали три кадра не про интерьер, а про его настоящую атмосферу.",
+    ["live/sep-28-place-alive-cover.png", "photographer/opening/source-12.jpg", "photographer/opening/source-21.jpg"]),
+  post(29, "KZ", "LIVE", "Ай соңындағы жай кадр",
+    "Ай соңындағы жай кадр: адам, жылы жарық және асықпай өтетін уақыт. Осындай сәттер SREDA-ны тірі етеді 🤍",
+    "photographer/opening/source-29.jpg"),
+  post(30, "RU", "CAROUSEL", "Сентябрь в людях",
+    "Сентябрь в SREDA получился не из рекламных фраз, а из людей, разговоров, музыки, кофе и маленьких пауз. Оставляем пять кадров, к которым хочется вернуться 🤍",
+    ["photographer/opening/source-02.jpg", "photographer/opening/source-07.jpg", "photographer/opening/source-08.jpg", "photographer/opening/source-18.jpg", "photographer/opening/source-30.jpg"]),
 ]);
 
 const ALL_POSTS = Object.freeze([THREADS_LAUNCH_POST, THREADS_TRIAL_POST, ...SEPTEMBER_THREADS_POSTS]);
@@ -160,7 +173,8 @@ export function validateThreadsSeptemberCalendar() {
   const dates = new Set();
   const texts = new Set();
   const languages = { KZ: 0, RU: 0 };
-  const formats = { PHOTO: 0, DESIGN: 0, TEXT: 0 };
+  const formats = { CAROUSEL: 0, LIVE: 0, AIR: 0, FOOD: 0, DESIGN: 0 };
+  const dailyAssets = new Set();
 
   for (const item of SEPTEMBER_THREADS_POSTS) {
     if (ids.has(item.id)) errors.push(`Дублирующийся ID: ${item.id}`);
@@ -175,8 +189,18 @@ export function validateThreadsSeptemberCalendar() {
     if (!item.text.includes(PHONE) || !item.text.includes("26/1")) errors.push(`${item.id}: нет контактов`);
     if (item.text.includes("?")) errors.push(`${item.id}: вопросительный знак запрещён`);
     if (item.text.length > 500) errors.push(`${item.id}: текст длиннее 500 знаков`);
-    if (item.format === "TEXT" && item.asset) errors.push(`${item.id}: TEXT не должен иметь asset`);
-    if (item.format !== "TEXT" && !item.asset) errors.push(`${item.id}: медиапост без asset`);
+    const refs = item.assets || (item.asset ? [item.asset] : []);
+    if (refs.length === 0) errors.push(`${item.id}: пост без медиа`);
+    if (item.format === "CAROUSEL" && (refs.length < 2 || refs.length > 20)) {
+      errors.push(`${item.id}: в карусели должно быть от 2 до 20 кадров`);
+    }
+    if (item.format !== "CAROUSEL" && refs.length !== 1) {
+      errors.push(`${item.id}: одиночный формат должен иметь один кадр`);
+    }
+    for (const ref of refs) {
+      if (dailyAssets.has(ref)) errors.push(`${item.id}: повторно используется asset ${ref}`);
+      dailyAssets.add(ref);
+    }
   }
 
   for (let day = 1; day <= 30; day += 1) {
@@ -184,8 +208,8 @@ export function validateThreadsSeptemberCalendar() {
     if (!dates.has(date)) errors.push(`Нет даты ${date}`);
   }
   if (languages.KZ !== 15 || languages.RU !== 15) errors.push("Языки должны быть 15 KZ + 15 RU");
-  if (formats.PHOTO !== 12 || formats.DESIGN !== 8 || formats.TEXT !== 10) {
-    errors.push("Форматы должны быть 12 PHOTO + 8 DESIGN + 10 TEXT");
+  if (formats.CAROUSEL !== 10 || formats.LIVE !== 7 || formats.AIR !== 6 || formats.FOOD !== 6 || formats.DESIGN !== 1) {
+    errors.push("Форматы должны быть 10 CAROUSEL + 7 LIVE + 6 AIR + 6 FOOD + 1 DESIGN");
   }
   return { ok: errors.length === 0, errors, counts: { languages, formats } };
 }
