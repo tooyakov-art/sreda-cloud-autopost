@@ -5,7 +5,7 @@ export const STORY_TIMES = ["15:20", "15:40", "16:00", "16:20", "16:40"];
 // Exact five-frame V2 set approved by the user for one ordered publication on
 // 1 September 2026. The workflow has no cron trigger and is disabled again after
 // the five guarded runs complete.
-export const STORY_RELEASE_STATUS = "APPROVED";
+export const STORY_RELEASE_STATUS = "FOR_REVIEW_DO_NOT_PUBLISH";
 
 export function storyAutopublishApproved() {
   return STORY_RELEASE_STATUS === "APPROVED";

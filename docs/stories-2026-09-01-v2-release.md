@@ -1,10 +1,10 @@
 # SREDA Stories — 1 September 2026 V2 release
 
-Status: `APPROVED`
+Status: `FOR_REVIEW_DO_NOT_PUBLISH`
 
 Target: `@sreda.astana`
 
-Authorization scope: one ordered publication on 1 September 2026 in `Asia/Qyzylorda`. The user explicitly approved the exact five-frame V2 set for publication on this date. Any changed raster, different date/account or repeat requires fresh authorization.
+Authorization scope: none. A newer user instruction stopped publication and requires explicit design approval after reviewing a single calendar preview.
 
 Encrypted package: `content/stories-2026-09-01-v2.tar.gz.enc`, SHA-256 `DA8F52CF7C7D4C2BD53E41813A9D02E421F05ABF59AFF2091ED0B12F6611B3FF`.
 

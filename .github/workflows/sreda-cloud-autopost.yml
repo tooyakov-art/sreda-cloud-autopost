@@ -4,17 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       story_slot:
-        description: Verify, or publish one exact approved 1 September V2 frame
+        description: Verify only; Story publishing is blocked pending design approval
         required: true
         default: verify
         type: choice
         options:
           - verify
-          - "15:20"
-          - "15:40"
-          - "16:00"
-          - "16:20"
-          - "16:40"
 
 concurrency:
   # Verify never blocks live work. Every approved frame has its own exact slot;
@@ -87,11 +82,7 @@ jobs:
         run: node src/cloud-verify.mjs
 
   publish:
-    if: >-
-      github.event_name == 'workflow_dispatch' &&
-      inputs.story_slot != 'verify' &&
-      github.run_attempt == 1 &&
-      github.ref == 'refs/heads/main'
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:

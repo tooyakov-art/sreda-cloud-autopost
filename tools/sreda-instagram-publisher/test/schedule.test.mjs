@@ -14,9 +14,9 @@ import {
   threadsAutopublishEnabled,
 } from "../src/schedule.mjs";
 
-test("Exact 1 September V2 Story release is approved", () => {
-  assert.equal(STORY_RELEASE_STATUS, "APPROVED");
-  assert.equal(storyAutopublishApproved(), true);
+test("1 September V2 Story release stays blocked until design approval", () => {
+  assert.equal(STORY_RELEASE_STATUS, "FOR_REVIEW_DO_NOT_PUBLISH");
+  assert.equal(storyAutopublishApproved(), false);
 });
 
 test("Threads autopublishing is disabled unless explicitly enabled", () => {
