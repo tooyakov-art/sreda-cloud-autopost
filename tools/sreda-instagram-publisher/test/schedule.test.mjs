@@ -14,9 +14,9 @@ import {
   threadsAutopublishEnabled,
 } from "../src/schedule.mjs";
 
-test("Rejected historical Story release cannot autopublish", () => {
-  assert.equal(STORY_RELEASE_STATUS, "REJECTED_DO_NOT_PUBLISH");
-  assert.equal(storyAutopublishApproved(), false);
+test("Exact 1 September V2 Story release is approved", () => {
+  assert.equal(STORY_RELEASE_STATUS, "APPROVED");
+  assert.equal(storyAutopublishApproved(), true);
 });
 
 test("Threads autopublishing is disabled unless explicitly enabled", () => {
@@ -31,20 +31,23 @@ test("Threads autopublishing is disabled unless explicitly enabled", () => {
   );
 });
 
-test("Qyzylorda exact Story slots cover the handoff days and all September", () => {
-  const morning = resolveScheduledAction(parseAt("2026-08-29T08:00"));
-  const evening = resolveScheduledAction(parseAt("2026-09-30T21:00"));
-  assert.equal(morning.kind, "story");
-  assert.equal(morning.storyIndex, 0);
-  assert.match(morning.asset, /^morning\//);
-  assert.equal(evening.kind, "story");
-  assert.equal(evening.storyIndex, 4);
-  assert.match(evening.asset, /^evening\//);
-  assert.equal(STORY_SLOTS.size, 165);
+test("Qyzylorda exact Story slots contain only the ordered 1 September V2 set", () => {
+  const first = resolveScheduledAction(parseAt("2026-09-01T15:20"));
+  const last = resolveScheduledAction(parseAt("2026-09-01T16:40"));
+  assert.equal(first.kind, "story");
+  assert.equal(first.storyIndex, 0);
+  assert.equal(first.asset, "2026-09-01-v2/01-information-guest.png");
+  assert.equal(last.kind, "story");
+  assert.equal(last.storyIndex, 4);
+  assert.equal(last.asset, "2026-09-01-v2/05-information-omelette.png");
+  assert.deepEqual(STORY_TIMES, ["15:20", "15:40", "16:00", "16:20", "16:40"]);
+  assert.equal(STORY_SLOTS.size, 5);
   assert.equal(
-    localSlot(parseAt("2026-08-29T03:00:00Z")).key,
-    "2026-08-29 08:00",
+    localSlot(parseAt("2026-09-01T10:20:00Z")).key,
+    "2026-09-01 15:20",
   );
+  assert.equal(resolveScheduledAction(parseAt("2026-09-01T14:30")), null);
+  assert.equal(resolveScheduledAction(parseAt("2026-09-02T15:00")), null);
 });
 
 test("Carousel wins only at its exact minute", () => {

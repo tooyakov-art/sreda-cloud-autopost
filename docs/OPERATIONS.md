@@ -7,14 +7,14 @@
 
 Public repo не является местом для черновиков или согласования.
 
-## 2. Production scheduler и независимый watchdog
+## 2. Production scheduler
 
-Stories публикует только workflow `SREDA Cloud Autopost`. Heartbeat `SREDA Stories — watchdog` является независимым dispatcher: заранее вызывает этот же workflow с точным `story_slot`, проверяет результат и никогда не обращается к Meta напрямую.
+Stories публикует только workflow `SREDA Cloud Autopost`. Для одноразового релиза 1 сентября используются пять точных ручных cloud-dispatch; recurring Story cron и внешний watchdog отсутствуют. После подтверждения всех пяти публикаций workflow снова выключается.
 
 Другие механизмы должны быть выключены:
 
 - Windows Scheduled Task;
-- другие ChatGPT/Codex automations для Stories;
+- ChatGPT/Codex automations для Stories;
 - GitHub Actions workflow в private context repo;
 - ручные браузерные публикации как параллельная автоматизация.
 
@@ -32,21 +32,21 @@ Stories публикует только workflow `SREDA Cloud Autopost`. Heartbe
 
 Проверяется только наличие. Значения никогда не копируются в issue, PR, commit, workflow YAML, команды или чат.
 
-## 4. Расписание и часовой пояс
+## 4. Одноразовые слоты и часовой пояс
 
 GitHub cron работает в UTC. Проект работает в `Asia/Qyzylorda`, UTC+5.
 
-| Prewarm cron UTC | Локально | Возможное действие |
+| Dispatch input | Локально | Действие |
 |---:|---:|---|
-| 02:43 | 08:00 | Story |
-| 06:13 | 11:30 | Story |
-| 09:13 | 14:30 | Story |
-| 13:13 | 18:30 | Story |
-| 15:43 | 21:00 | Story |
+| `15:20` | 15:20 | Story 01 |
+| `15:40` | 15:40 | Story 02 |
+| `16:00` | 16:00 | Story 03 |
+| `16:20` | 16:20 | Story 04 |
+| `16:40` | 16:40 | Story 05 |
 
 Автопубликация Threads отключена: её cron-слоты удалены, а runner по умолчанию блокирует публикацию Threads.
 
-GitHub schedule в production наблюдался с задержками в несколько часов, поэтому не считается SLA-механизмом. Watchdog делает несколько проверок до и после каждого слота: за 25–5 минут он dispatch'ит точный slot, а после публикации сверяет `kind=story`, `localSlot` и числовой Meta publication ID. Workflow всё равно откажется от фактического `media_publish` после +15 минут.
+Каждый run dispatch'ится заранее, ждёт свой точный локальный слот и после публикации проверяется по `kind=story`, `localSlot` и числовому Meta publication ID. Workflow откажется от фактического `media_publish` после +15 минут и полностью блокируется на любой дате кроме 1 сентября 2026.
 
 ## 5. Что делает scheduled job
 
@@ -72,7 +72,7 @@ GitHub schedule в production наблюдался с задержками в н
 - доступ к Threads `sreda.astana`;
 - доступность временного HTTPS staging.
 
-Значения `08:00`, `11:30`, `14:30`, `18:30`, `21:00` являются live-входами для watchdog. Они не предназначены для произвольного ручного запуска: workflow разрешает только текущую локальную дату, блокирует запуск позднее +15 минут и использует durable ledger против дублей.
+Значения `15:20`, `15:40`, `16:00`, `16:20`, `16:40` являются live-входами только для утверждённой последовательности 1 сентября. Workflow блокирует другую дату, запуск позднее +15 минут и использует durable ledger против дублей.
 
 ## 7. Тесты перед push
 
@@ -127,7 +127,7 @@ Runner создаёт уникальный ключ для каждого сло
 
 | Симптом | Проверка | Действие |
 |---|---|---|
-| Workflow не запускается | Actions enabled, GitHub status, default branch, heartbeat | Watchdog dispatch'ит тот же workflow; не включать иной publisher |
+| Workflow не запускается | Actions enabled, GitHub status, default branch | Исправить/повторить только до дедлайна конкретного слота; не включать иной publisher |
 | `permission` / token error | Meta permissions и expiry | Обновить Secret, затем ручной `verify` |
 | staging/DNS timeout | Лог шага verify/publish | Запустить только `verify`; live повторять после проверки профиля |
 | файл/папка отсутствует | Структура после расшифровки и тесты | Пересобрать `.enc`, не коммитить открытые файлы |

@@ -4,23 +4,28 @@ on:
   workflow_dispatch:
     inputs:
       story_slot:
-        description: Verify only, or rescue one current-day Story slot
+        description: Verify, or publish one exact approved 1 September V2 frame
         required: true
         default: verify
         type: choice
         options:
           - verify
+          - "15:20"
+          - "15:40"
+          - "16:00"
+          - "16:20"
+          - "16:40"
 
 concurrency:
-  # Verify never blocks live work. Live runs serialize per logical slot, so a
-  # delayed cron for another time cannot evict a pending watchdog rescue.
+  # Verify never blocks live work. Every approved frame has its own exact slot;
+  # their non-overlapping +15m windows preserve sequence order.
   group: >-
     sreda-cloud-autopost-${{
-      (inputs.story_slot == '08:00' || github.event.schedule == '43 2 * * *') && 'story-0800' ||
-      (inputs.story_slot == '11:30' || github.event.schedule == '13 6 * * *') && 'story-1130' ||
-      (inputs.story_slot == '14:30' || github.event.schedule == '13 9 * * *') && 'story-1430' ||
-      (inputs.story_slot == '18:30' || github.event.schedule == '13 13 * * *') && 'story-1830' ||
-      (inputs.story_slot == '21:00' || github.event.schedule == '43 15 * * *') && 'story-2100' ||
+      inputs.story_slot == '15:20' && 'story-1520' ||
+      inputs.story_slot == '15:40' && 'story-1540' ||
+      inputs.story_slot == '16:00' && 'story-1600' ||
+      inputs.story_slot == '16:20' && 'story-1620' ||
+      inputs.story_slot == '16:40' && 'story-1640' ||
       inputs.story_slot == 'verify' && 'verify' || 'unknown'
     }}
   cancel-in-progress: false
@@ -41,8 +46,30 @@ jobs:
       - name: Install dependencies
         working-directory: tools/sreda-instagram-publisher
         run: npm ci
+      - name: Decrypt exact approved Story release for QA
+        env:
+          SREDA_STORIES_ASSETS_PASSWORD: ${{ secrets.SREDA_STORIES_ASSETS_PASSWORD }}
+        run: |
+          mkdir -p current/stories-bank /tmp/sreda-content
+          openssl enc -d -aes-256-cbc -pbkdf2 \
+            -in content/stories-2026-09-01-v2.tar.gz.enc \
+            -out /tmp/sreda-content/stories.tar.gz \
+            -pass env:SREDA_STORIES_ASSETS_PASSWORD
+          tar -xzf /tmp/sreda-content/stories.tar.gz -C current/stories-bank
+      - name: Verify exact approved Story hashes
+        working-directory: current/stories-bank
+        run: |
+          sha256sum -c <<'EOF'
+          997b387c3df3d9a951f3d1ffbd4ce4a31558021dd3f882dac3bdac0a553bc80b  2026-09-01-v2/01-information-guest.png
+          76d6e04e93730592a32d25bd9fd41b286114f310ec13908880f6d0a7f26ec7fb  2026-09-01-v2/02-air-balloons.png
+          dfc7d5fbb38670872a125321ae14de1f9dde493278084e8bb7e0ca07516be07c  2026-09-01-v2/03-live-editorial.png
+          9d0baca16a64eab419d951ec127f9090109ec3b4b19b6f9658b78190da632402  2026-09-01-v2/04-air-ivory.png
+          b29199b3177e26bd77a82841fec1924cf5cf6d52263479448fa54ec0932639c0  2026-09-01-v2/05-information-omelette.png
+          EOF
       - name: Verify publisher code while Stories are paused
         working-directory: tools/sreda-instagram-publisher
+        env:
+          SREDA_STORIES_ROOT: ${{ github.workspace }}/current/stories-bank
         run: npm test
       - name: Install cloudflared
         run: |
@@ -60,10 +87,13 @@ jobs:
         run: node src/cloud-verify.mjs
 
   publish:
-    # Fail closed until a newly approved Story release replaces the rejected pack.
-    if: ${{ false }}
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.story_slot != 'verify' &&
+      github.run_attempt == 1 &&
+      github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -83,7 +113,7 @@ jobs:
         run: |
           mkdir -p current/stories-bank /tmp/sreda-content
           openssl enc -d -aes-256-cbc -pbkdf2 \
-            -in content/stories-2026-08-29-to-2026-09-30.tar.gz.enc \
+            -in content/stories-2026-09-01-v2.tar.gz.enc \
             -out /tmp/sreda-content/stories.tar.gz \
             -pass env:SREDA_STORIES_ASSETS_PASSWORD
           tar -xzf /tmp/sreda-content/stories.tar.gz -C current/stories-bank
@@ -91,13 +121,13 @@ jobs:
         id: slot
         shell: bash
         run: |
-          trigger="${{ github.event_name == 'schedule' && github.event.schedule || inputs.story_slot }}"
+          trigger="${{ inputs.story_slot }}"
           case "$trigger" in
-            "43 2 * * *"|"08:00") slot="08:00"; target="03:00" ;;
-            "13 6 * * *"|"11:30") slot="11:30"; target="06:30" ;;
-            "13 9 * * *"|"14:30") slot="14:30"; target="09:30" ;;
-            "13 13 * * *"|"18:30") slot="18:30"; target="13:30" ;;
-            "43 15 * * *"|"21:00") slot="21:00"; target="16:00" ;;
+            "15:20") slot="15:20"; target="10:20" ;;
+            "15:40") slot="15:40"; target="10:40" ;;
+            "16:00") slot="16:00"; target="11:00" ;;
+            "16:20") slot="16:20"; target="11:20" ;;
+            "16:40") slot="16:40"; target="11:40" ;;
             *) exit 2 ;;
           esac
           target_epoch="$(date -u -d "$(date -u +%F) $target:00" +%s)"
@@ -111,6 +141,10 @@ jobs:
             exit 3
           fi
           local_date="$(TZ=Asia/Qyzylorda date +%F)"
+          if [[ "$local_date" != "2026-09-01" ]]; then
+            echo "This one-time Story release is valid only on 2026-09-01" >&2
+            exit 4
+          fi
           echo "time=$slot" >> "$GITHUB_OUTPUT"
           echo "ledger_key=sreda-story-${local_date}-${slot//:/}" >> "$GITHUB_OUTPUT"
       - name: Restore durable publication ledger
